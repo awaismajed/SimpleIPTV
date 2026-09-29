@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical" android:background="#0B1520">
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="58dp"
-        android:gravity="center_vertical" android:paddingHorizontal="16dp"
-        android:background="#0E1925">
+    <LinearLayout android:id="@+id/topBar" android:layout_width="match_parent"
+        android:layout_height="56dp" android:gravity="center_vertical"
+        android:paddingHorizontal="16dp" android:background="#0E1925">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
             android:layout_weight="1" android:text="Simple IPTV"
             android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold" />
@@ -15,11 +16,11 @@
             app:mediaRouteButtonTint="@android:color/white" />
     </LinearLayout>
 
-    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:scrollbars="none" android:paddingTop="6dp">
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="52dp"
+        android:fillViewport="false" android:scrollbars="none">
         <LinearLayout android:id="@+id/playlistButtons" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:orientation="horizontal"
-            android:paddingHorizontal="8dp" />
+            android:layout_height="match_parent" android:gravity="center_vertical"
+            android:orientation="horizontal" android:paddingHorizontal="8dp" />
     </HorizontalScrollView>
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="52dp"
@@ -30,9 +31,9 @@
             android:hint="Search channels..." android:singleLine="true"
             android:paddingHorizontal="14dp" android:textColor="#FFFFFF"
             android:textColorHint="#91A2B4" android:background="#172638" />
-        <Button android:id="@+id/scanButton" android:layout_width="52dp"
+        <Button android:id="@+id/scanButton" android:layout_width="64dp"
             android:layout_height="44dp" android:layout_marginStart="8dp"
-            android:text="☷" android:textSize="20sp" android:textAllCaps="false" />
+            android:text="Scan" android:textSize="12sp" android:textAllCaps="false" />
     </LinearLayout>
 
     <TextView android:id="@+id/status" android:layout_width="match_parent"
@@ -41,59 +42,53 @@
         android:textColor="#C4D0DC" android:textSize="14sp" />
 
     <androidx.media3.ui.PlayerView android:id="@+id/playerView"
-        android:layout_width="match_parent" android:layout_height="210dp"
+        android:layout_width="match_parent" android:layout_height="200dp"
         android:background="#000000" android:keepScreenOn="true" />
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="58dp"
+    <LinearLayout android:layout_width="match_parent" android:layout_height="54dp"
         android:orientation="horizontal" android:gravity="center"
         android:background="#0E1925" android:paddingHorizontal="6dp">
         <Button android:id="@+id/previousButton" android:layout_width="0dp"
-            android:layout_height="46dp" android:layout_weight="1"
-            android:text="◀" android:textSize="18sp" />
+            android:layout_height="44dp" android:layout_weight="1" android:text="◀" />
         <Button android:id="@+id/favoriteButton" android:layout_width="0dp"
-            android:layout_height="46dp" android:layout_weight="1.25"
+            android:layout_height="44dp" android:layout_weight="1.4"
             android:text="☆ Favorite" android:textAllCaps="false" />
         <Button android:id="@+id/nextButton" android:layout_width="0dp"
-            android:layout_height="46dp" android:layout_weight="1"
-            android:text="▶" android:textSize="18sp" />
+            android:layout_height="44dp" android:layout_weight="1" android:text="▶" />
         <Button android:id="@+id/fullscreenButton" android:layout_width="0dp"
-            android:layout_height="46dp" android:layout_weight="1"
-            android:text="⛶" android:textSize="20sp" />
+            android:layout_height="44dp" android:layout_weight="1" android:text="⛶" />
     </LinearLayout>
 
     <LinearLayout android:id="@+id/scanSummary" android:layout_width="match_parent"
-        android:layout_height="48dp" android:orientation="horizontal"
-        android:visibility="gone" android:paddingHorizontal="10dp">
+        android:layout_height="44dp" android:orientation="horizontal"
+        android:visibility="gone" android:paddingHorizontal="8dp">
         <TextView android:id="@+id/workingCount" android:layout_width="0dp"
             android:layout_height="match_parent" android:layout_weight="1"
             android:gravity="center" android:text="✓ 0 Working" android:textColor="#54D892" />
         <TextView android:id="@+id/notWorkingCount" android:layout_width="0dp"
             android:layout_height="match_parent" android:layout_weight="1"
-            android:gravity="center" android:text="✕ 0 Not Working" android:textColor="#FF6B6B" />
+            android:gravity="center" android:text="✕ 0 Offline" android:textColor="#FF6B6B" />
         <TextView android:id="@+id/uncertainCount" android:layout_width="0dp"
             android:layout_height="match_parent" android:layout_weight="1"
-            android:gravity="center" android:text="Uncertain: 0" android:textColor="#C7D0DA" />
+            android:gravity="center" android:text="Uncertain 0" android:textColor="#C7D0DA" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView android:id="@+id/channelList"
         android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="62dp"
-        android:orientation="horizontal" android:gravity="center"
-        android:background="#0E1925">
+    <LinearLayout android:id="@+id/bottomNav" android:layout_width="match_parent"
+        android:layout_height="64dp" android:orientation="horizontal"
+        android:gravity="center" android:background="#0E1925" android:paddingHorizontal="6dp">
         <Button android:id="@+id/channelsTab" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1"
-            android:text="▣
-Channels" android:textAllCaps="false" />
+            android:layout_height="52dp" android:layout_weight="1"
+            android:text="Channels" android:textAllCaps="false" />
         <Button android:id="@+id/favoritesTab" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1"
-            android:text="★
-Favorites" android:textAllCaps="false" />
+            android:layout_height="52dp" android:layout_weight="1"
+            android:text="★ Favorites" android:textAllCaps="false" />
         <Button android:id="@+id/scanTab" android:layout_width="0dp"
-            android:layout_height="match_parent" android:layout_weight="1"
-            android:text="⌁
-Scan" android:textAllCaps="false" />
+            android:layout_height="52dp" android:layout_weight="1"
+            android:text="Scan" android:textAllCaps="false" />
     </LinearLayout>
 
     <Button android:id="@+id/showAllButton" android:layout_width="1dp"
