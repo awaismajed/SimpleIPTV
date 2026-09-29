@@ -72,7 +72,7 @@
             android:gravity="center" android:text="✕ 0 Not Working" android:textColor="#FF6B6B" />
         <TextView android:id="@+id/uncertainCount" android:layout_width="0dp"
             android:layout_height="match_parent" android:layout_weight="1"
-            android:gravity="center" android:text="? 0 Uncertain" android:textColor="#C7D0DA" />
+            android:gravity="center" android:text="Uncertain: 0" android:textColor="#C7D0DA" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView android:id="@+id/channelList"
