@@ -11,8 +11,8 @@ android {
         applicationId = "com.spel.simpleiptv"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.3"
+        versionCode = 5
+        versionName = "2.3.1"
     }
 
     compileOptions {
@@ -30,5 +30,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
     implementation("androidx.media3:media3-cast:1.11.1")
 }
