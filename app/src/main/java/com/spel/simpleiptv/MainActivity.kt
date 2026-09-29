@@ -15,7 +15,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.media3.cast.CastPlayer
-import androidx.media3.cast.MediaRouteButtonFactory
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -23,6 +22,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.CastContext
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.net.HttpURLConnection
@@ -71,6 +72,8 @@ class MainActivity : AppCompatActivity() {
         scanButton = findViewById(R.id.scanButton)
         channelList.layoutManager = LinearLayoutManager(this)
 
+        // Initialize the Google Cast framework first so receiver discovery starts reliably.
+        CastContext.getSharedInstance(this)
         localPlayer = ExoPlayer.Builder(this).build()
         player = CastPlayer.Builder(this).setLocalPlayer(localPlayer).build()
         playerView.player = player
@@ -103,8 +106,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupCastButton() {
-        MediaRouteButtonFactory.setUpMediaRouteButton(
-            this, findViewById<MediaRouteButton>(R.id.castButton)
+        // Use the Google Cast framework button setup. This was the discovery path
+        // used by the earlier working build and remains compatible with CastPlayer.
+        CastButtonFactory.setUpMediaRouteButton(
+            applicationContext,
+            findViewById<MediaRouteButton>(R.id.castButton)
         )
     }
 
