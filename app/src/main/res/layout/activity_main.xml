@@ -1,99 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#101010">
+    android:background="#0D1722"
+    android:paddingTop="6dp">
 
-    <TextView
-        android:id="@+id/title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Simple IPTV"
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:padding="12dp" />
-
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:id="@+id/playlistButtons"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp" />
-
-    </HorizontalScrollView>
-
-    <EditText
-        android:id="@+id/searchBox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Search channels..."
-        android:textColor="#FFFFFF"
-        android:textColorHint="#AAAAAA"
-        android:singleLine="true"
-        android:padding="10dp"
-        android:layout_marginLeft="8dp"
-        android:layout_marginRight="8dp" />
-
-    <TextView
-        android:id="@+id/status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Loading channels..."
-        android:textColor="#CCCCCC"
-        android:textSize="14sp"
-        android:padding="8dp" />
-
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/playerView"
-        android:layout_width="match_parent"
-        android:layout_height="220dp"
-        android:background="#000000"
-        android:keepScreenOn="true" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center">
-
-        <Button
-            android:id="@+id/previousButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Previous" />
-
-        <Button
-            android:id="@+id/fullscreenButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Fullscreen" />
-
-        <Button
-            android:id="@+id/nextButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Next" />
-
+    <LinearLayout android:layout_width="match_parent" android:layout_height="52dp"
+        android:gravity="center_vertical" android:paddingHorizontal="14dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:text="Simple IPTV" android:textColor="#FFFFFF"
+            android:textSize="22sp" android:textStyle="bold" />
+        <androidx.mediarouter.app.MediaRouteButton
+            android:id="@+id/castButton" android:layout_width="48dp" android:layout_height="48dp"
+            app:mediaRouteButtonTint="@android:color/white" />
     </LinearLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/channelList"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:scrollbars="none">
+        <LinearLayout android:id="@+id/playlistButtons" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:orientation="horizontal"
+            android:paddingHorizontal="6dp" />
+    </HorizontalScrollView>
 
+    <EditText android:id="@+id/searchBox" android:layout_width="match_parent"
+        android:layout_height="48dp" android:layout_marginHorizontal="10dp"
+        android:layout_marginTop="4dp" android:hint="Search channels..."
+        android:singleLine="true" android:paddingHorizontal="14dp"
+        android:textColor="#FFFFFF" android:textColorHint="#93A4B5" />
+
+    <TextView android:id="@+id/status" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:minHeight="36dp"
+        android:gravity="center_vertical" android:paddingHorizontal="12dp"
+        android:text="Loading channels..." android:textColor="#B9C7D5" android:textSize="14sp" />
+
+    <androidx.media3.ui.PlayerView android:id="@+id/playerView"
+        android:layout_width="match_parent" android:layout_height="220dp"
+        android:background="#000000" android:keepScreenOn="true" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center" android:orientation="horizontal" android:paddingHorizontal="4dp">
+        <Button android:id="@+id/previousButton" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="◀ Prev" android:textAllCaps="false" />
+        <Button android:id="@+id/favoriteButton" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1.2"
+            android:text="☆ Favorite" android:textAllCaps="false" />
+        <Button android:id="@+id/nextButton" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="Next ▶" android:textAllCaps="false" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center" android:orientation="horizontal" android:paddingHorizontal="4dp">
+        <Button android:id="@+id/fullscreenButton" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="⛶ Fullscreen" android:textAllCaps="false" />
+        <Button android:id="@+id/scanButton" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="✓ Scan" android:textAllCaps="false" />
+        <Button android:id="@+id/showAllButton" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="Show All" android:textAllCaps="false" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/channelList"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" />
 </LinearLayout>
