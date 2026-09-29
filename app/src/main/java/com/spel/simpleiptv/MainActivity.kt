@@ -12,6 +12,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.MediaRouteButtonFactory
 import androidx.media3.common.MediaItem
@@ -25,6 +27,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
@@ -40,7 +44,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playlistButtons: LinearLayout
     private lateinit var favoriteButton: Button
     private lateinit var scanButton: Button
-    private lateinit var showAllButton: Button
 
     private var allChannels: List<Channel> = emptyList()
     private var visibleChannels: List<Channel> = emptyList()
@@ -49,13 +52,15 @@ class MainActivity : AppCompatActivity() {
     private var currentPlaylist = "Pakistan"
     private var fullscreen = false
 
-    private val scanResults = mutableMapOf<String, ScanState>()
+    private val scanResults = ConcurrentHashMap<String, ChannelScanStatus>()
+    private var scanExecutor: ExecutorService? = null
+    private val scanGeneration = AtomicInteger(0)
     private val favorites by lazy { getSharedPreferences("favorites", MODE_PRIVATE) }
-    private enum class ScanState { WORKING, NOT_WORKING, UNCERTAIN }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        applySafeInsets()
 
         playerView = findViewById(R.id.playerView)
         status = findViewById(R.id.status)
@@ -64,10 +69,6 @@ class MainActivity : AppCompatActivity() {
         playlistButtons = findViewById(R.id.playlistButtons)
         favoriteButton = findViewById(R.id.favoriteButton)
         scanButton = findViewById(R.id.scanButton)
-        showAllButton = findViewById(R.id.showAllButton)
-        val channelsTab = findViewById<Button>(R.id.channelsTab)
-        val favoritesTab = findViewById<Button>(R.id.favoritesTab)
-        val scanTab = findViewById<Button>(R.id.scanTab)
         channelList.layoutManager = LinearLayoutManager(this)
 
         localPlayer = ExoPlayer.Builder(this).build()
@@ -82,50 +83,63 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
-        favoriteButton.setOnClickListener { toggleCurrentFavorite() }
+        favoriteButton.setOnClickListener { currentChannel?.let { toggleFavorite(it) } }
         scanButton.setOnClickListener { scanCurrentList() }
-        showAllButton.setOnClickListener {
-            scanResults.clear()
-            applySearch()
-        }
-        channelsTab.setOnClickListener {
-            val source = PlaylistConfig.playlists.firstOrNull { it.name == currentPlaylist }
-                ?: PlaylistConfig.playlists.first { it.name == "Pakistan" }
-            loadPlaylist(source.name, source.url)
-        }
-        favoritesTab.setOnClickListener { showFavorites() }
-        scanTab.setOnClickListener { scanCurrentList() }
+        findViewById<Button>(R.id.channelsTab).setOnClickListener { showCurrentCategory() }
+        findViewById<Button>(R.id.favoritesTab).setOnClickListener { showFavorites() }
+        findViewById<Button>(R.id.scanTab).setOnClickListener { scanCurrentList() }
 
         loadPlaylist("Pakistan", PlaylistConfig.playlists.first { it.name == "Pakistan" }.url)
     }
 
+    private fun applySafeInsets() {
+        val root = findViewById<View>(R.id.rootContainer)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            if (!fullscreen) view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
+    }
+
     private fun setupCastButton() {
-        val castButton = findViewById<MediaRouteButton>(R.id.castButton)
-        MediaRouteButtonFactory.setUpMediaRouteButton(this, castButton)
+        MediaRouteButtonFactory.setUpMediaRouteButton(
+            this, findViewById<MediaRouteButton>(R.id.castButton)
+        )
     }
 
     private fun createPlaylistButtons() {
-        addCategoryButton("⭐ Favorites") { showFavorites() }
-        PlaylistConfig.playlists.forEach { playlist ->
-            addCategoryButton(playlist.name) {
+        PlaylistConfig.playlists.forEach { source ->
+            addCategoryButton(source.name) {
                 searchBox.setText("")
-                loadPlaylist(playlist.name, playlist.url)
+                loadPlaylist(source.name, source.url)
             }
         }
     }
 
-    private fun addCategoryButton(text: String, action: () -> Unit) {
-        val button = Button(this).apply {
-            this.text = text
+    private fun addCategoryButton(label: String, action: () -> Unit) {
+        playlistButtons.addView(Button(this).apply {
+            text = label
             isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(22, 0, 22, 0)
             setOnClickListener { action() }
-        }
-        playlistButtons.addView(button)
+        })
+    }
+
+    private fun cancelScan() {
+        scanGeneration.incrementAndGet()
+        scanExecutor?.shutdownNow()
+        scanExecutor = null
+        scanButton.isEnabled = true
     }
 
     private fun loadPlaylist(name: String, playlistUrl: String) {
+        cancelScan()
         currentPlaylist = name
         scanResults.clear()
+        findViewById<View>(R.id.scanSummary).visibility = View.GONE
         status.text = "Loading $name channels..."
         allChannels = emptyList()
         showChannels(emptyList())
@@ -135,15 +149,13 @@ class MainActivity : AppCompatActivity() {
                 val connection = URL(playlistUrl).openConnection() as HttpURLConnection
                 connection.connectTimeout = 15000
                 connection.readTimeout = 20000
-                connection.setRequestProperty("User-Agent", "SimpleIPTV/2.1")
-                connection.connect()
-                val text = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
-                M3uParser.parse(text)
-            } catch (_: Exception) {
-                emptyList()
-            }
+                connection.setRequestProperty("User-Agent", "SimpleIPTV/2.3")
+                connection.inputStream.bufferedReader().use { M3uParser.parse(it.readText()) }
+                    .also { connection.disconnect() }
+            } catch (_: Exception) { emptyList() }
+
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 allChannels = channels
                 currentChannelIndex = -1
                 applySearch()
@@ -151,9 +163,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showCurrentCategory() {
+        if (currentPlaylist == "Favorites") {
+            val source = PlaylistConfig.playlists.first { it.name == "Pakistan" }
+            loadPlaylist(source.name, source.url)
+        } else {
+            applySearch()
+        }
+    }
+
     private fun showFavorites() {
+        cancelScan()
         currentPlaylist = "Favorites"
         scanResults.clear()
+        findViewById<View>(R.id.scanSummary).visibility = View.GONE
         searchBox.setText("")
         allChannels = readFavorites()
         currentChannelIndex = -1
@@ -164,17 +187,13 @@ class MainActivity : AppCompatActivity() {
         searchBox.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun afterTextChanged(s: Editable?) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                applySearch()
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { applySearch() }
         })
     }
 
     private fun applySearch() {
         val query = searchBox.text.toString().trim()
-        val filtered = allChannels.filter {
-            query.isEmpty() || it.name.contains(query, ignoreCase = true)
-        }
+        val filtered = allChannels.filter { query.isEmpty() || it.name.contains(query, true) }
         showChannels(filtered)
         status.text = "$currentPlaylist • ${filtered.size} channels"
     }
@@ -183,11 +202,12 @@ class MainActivity : AppCompatActivity() {
         visibleChannels = channels
         channelList.adapter = ChannelAdapter(
             channels,
-            { channel -> isFavorite(channel) },
-            { channel -> toggleFavorite(channel) },
-            { channel ->
-                currentChannelIndex = allChannels.indexOfFirst { it.url == channel.url }
-                playChannel(channel)
+            { isFavorite(it) },
+            { scanResults[it.url] ?: ChannelScanStatus.NOT_TESTED },
+            { toggleFavorite(it) },
+            {
+                currentChannelIndex = allChannels.indexOfFirst { c -> c.url == it.url }
+                playChannel(it)
             }
         )
     }
@@ -196,10 +216,9 @@ class MainActivity : AppCompatActivity() {
         currentChannel = channel
         updateFavoriteButton()
         status.text = "Loading: ${channel.name}"
-        val item = MediaItem.Builder().setUri(channel.url).setMediaId(channel.name).build()
         player.stop()
         player.clearMediaItems()
-        player.setMediaItem(item)
+        player.setMediaItem(MediaItem.Builder().setUri(channel.url).setMediaId(channel.name).build())
         player.prepare()
         player.playWhenReady = true
     }
@@ -217,142 +236,129 @@ class MainActivity : AppCompatActivity() {
         playChannel(allChannels[currentChannelIndex])
     }
 
-    private fun toggleCurrentFavorite() {
-        val channel = currentChannel ?: return
-        toggleFavorite(channel)
-    }
-
-    private fun isFavorite(channel: Channel): Boolean =
-        favorites.getStringSet("channels", emptySet())
-            ?.any { it.substringBefore('\t') == channel.url } == true
+    private fun isFavorite(channel: Channel) =
+        favorites.getStringSet("channels", emptySet())?.any { it.substringBefore('\t') == channel.url } == true
 
     private fun toggleFavorite(channel: Channel) {
         val saved = favorites.getStringSet("channels", emptySet())?.toMutableSet() ?: mutableSetOf()
         val existing = saved.firstOrNull { it.substringBefore('\t') == channel.url }
-        if (existing != null) saved.remove(existing) else saved.add(channel.url + "\t" + channel.name)
+        if (existing == null) saved.add(channel.url + "\t" + channel.name) else saved.remove(existing)
         favorites.edit().putStringSet("channels", saved).apply()
         updateFavoriteButton()
-        if (currentPlaylist == "Favorites") {
-            allChannels = readFavorites()
-        }
+        if (currentPlaylist == "Favorites") allChannels = readFavorites()
         applySearch()
     }
 
     private fun updateFavoriteButton() {
-        val channel = currentChannel
-        if (channel == null) {
-            favoriteButton.text = "☆ Favorite"
-            return
-        }
-        val isFavorite = favorites.getStringSet("channels", emptySet())
-            ?.any { it.substringBefore('\t') == channel.url } == true
-        favoriteButton.text = if (isFavorite) "★ Favorite" else "☆ Favorite"
+        favoriteButton.text = if (currentChannel?.let { isFavorite(it) } == true) "★ Favorite" else "☆ Favorite"
     }
 
-    private fun readFavorites(): List<Channel> =
-        favorites.getStringSet("channels", emptySet()).orEmpty()
-            .mapNotNull {
-                val p = it.split('\t', limit = 2)
-                if (p.size == 2) Channel(p[1], p[0]) else null
-            }
-            .sortedBy { it.name.lowercase() }
+    private fun readFavorites() = favorites.getStringSet("channels", emptySet()).orEmpty()
+        .mapNotNull {
+            val p = it.split('\t', limit = 2)
+            if (p.size == 2) Channel(p[1], p[0]) else null
+        }.sortedBy { it.name.lowercase() }
 
     private fun scanCurrentList() {
-        val targets = visibleChannels
-        if (targets.isEmpty()) return
-        val scanList = if (targets.size > 300) targets.take(300) else targets
-        scanButton.isEnabled = false
+        if (visibleChannels.isEmpty() || scanExecutor != null) return
+        val scanList = visibleChannels.take(300)
+        val generation = scanGeneration.incrementAndGet()
         scanResults.clear()
         findViewById<View>(R.id.scanSummary).visibility = View.VISIBLE
+        scanButton.isEnabled = false
         status.text = "Scanning 0/${scanList.size}..."
 
-        val pool = Executors.newFixedThreadPool(8)
-        val done = AtomicInteger(0)
+        val executor = Executors.newFixedThreadPool(6)
+        scanExecutor = executor
+        val completed = AtomicInteger(0)
 
         scanList.forEach { channel ->
-            pool.execute {
-                val result = testStream(channel.url)
-                synchronized(scanResults) { scanResults[channel.url] = result }
-                val completed = done.incrementAndGet()
-                runOnUiThread {
-                    val working = scanResults.values.count { it == ScanState.WORKING }
-                    val bad = scanResults.values.count { it == ScanState.NOT_WORKING }
-                    val uncertain = scanResults.values.count { it == ScanState.UNCERTAIN }
-                    findViewById<TextView>(R.id.workingCount).text = "✓ $working Working"
-                    findViewById<TextView>(R.id.notWorkingCount).text = "✕ $bad Not Working"
-                    findViewById<TextView>(R.id.uncertainCount).text = "? $uncertain Uncertain"
-                    status.text = "Scanning $completed/${scanList.size} • ✓ $working  ✕ $bad  ? $uncertain"
-                    if (completed == scanList.size) {
-                        scanButton.isEnabled = true
-                        val workingChannels = scanList.filter { scanResults[it.url] == ScanState.WORKING }
-                        showChannels(workingChannels)
-                        status.text = "Scan complete • ✓ $working  ✕ $bad  ? $uncertain • showing working"
-                        pool.shutdown()
+            executor.execute {
+                if (generation != scanGeneration.get()) return@execute
+                scanResults[channel.url] = testStream(channel.url)
+                val done = completed.incrementAndGet()
+
+                if (done % 5 == 0 || done == scanList.size) {
+                    runOnUiThread {
+                        if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
+                        updateScanUi(done, scanList.size)
+                        channelList.adapter?.notifyDataSetChanged()
+                        if (done == scanList.size) {
+                            scanButton.isEnabled = true
+                            scanExecutor?.shutdown()
+                            scanExecutor = null
+                            status.text = "Scan complete • ${scanList.size} channels tested"
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun testStream(url: String): ScanState {
+    private fun updateScanUi(done: Int, total: Int) {
+        val working = scanResults.values.count { it == ChannelScanStatus.WORKING }
+        val offline = scanResults.values.count { it == ChannelScanStatus.NOT_WORKING }
+        val uncertain = scanResults.values.count { it == ChannelScanStatus.UNCERTAIN }
+        findViewById<TextView>(R.id.workingCount).text = "✓ $working Working"
+        findViewById<TextView>(R.id.notWorkingCount).text = "✕ $offline Offline"
+        findViewById<TextView>(R.id.uncertainCount).text = "Uncertain $uncertain"
+        status.text = "Scanning $done/$total"
+    }
+
+    private fun testStream(url: String): ChannelScanStatus {
         var connection: HttpURLConnection? = null
         return try {
-            connection = URL(url).openConnection() as HttpURLConnection
+            connection = URL(url).openConnection() as? HttpURLConnection
+                ?: return ChannelScanStatus.UNCERTAIN
             connection.instanceFollowRedirects = true
-            connection.connectTimeout = 4000
-            connection.readTimeout = 4000
-            connection.setRequestProperty("User-Agent", "SimpleIPTV/2.1")
+            connection.connectTimeout = 3500
+            connection.readTimeout = 3500
+            connection.setRequestProperty("User-Agent", "SimpleIPTV/2.3")
             connection.setRequestProperty("Range", "bytes=0-1023")
-            connection.requestMethod = "GET"
-            when (connection.responseCode) {
-                in 200..399 -> ScanState.WORKING
-                in 400..599 -> ScanState.NOT_WORKING
-                else -> ScanState.UNCERTAIN
+            val code = connection.responseCode
+            when (code) {
+                in 200..399 -> ChannelScanStatus.WORKING
+                in 400..599 -> ChannelScanStatus.NOT_WORKING
+                else -> ChannelScanStatus.UNCERTAIN
             }
-        } catch (_: Exception) {
-            ScanState.UNCERTAIN
-        } finally {
-            connection?.disconnect()
-        }
+        } catch (_: Exception) { ChannelScanStatus.UNCERTAIN }
+        finally { connection?.disconnect() }
     }
 
     private fun setupPlayerListener() {
         player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                when (playbackState) {
+            override fun onPlaybackStateChanged(state: Int) {
+                when (state) {
                     Player.STATE_BUFFERING -> status.text = "Loading channel..."
-                    Player.STATE_READY -> {
-                        val name = player.currentMediaItem?.mediaId ?: "Channel"
-                        status.text = "Playing: $name"
-                    }
+                    Player.STATE_READY -> status.text = "Playing: ${player.currentMediaItem?.mediaId ?: "Channel"}"
                     Player.STATE_ENDED -> status.text = "Stream ended"
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
-                val name = player.currentMediaItem?.mediaId ?: "Channel"
-                status.text = "$name • Channel unavailable"
+                status.text = "${player.currentMediaItem?.mediaId ?: "Channel"} • Channel unavailable"
             }
         })
     }
 
     private fun toggleFullscreen() {
         fullscreen = !fullscreen
+        val root = findViewById<View>(R.id.rootContainer)
         if (fullscreen) {
+            root.setPadding(0, 0, 0, 0)
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             supportActionBar?.hide()
             if (android.os.Build.VERSION.SDK_INT >= 30) {
-                window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                window.insetsController?.hide(WindowInsets.Type.systemBars())
             } else {
                 @Suppress("DEPRECATION")
-                window.decorView.systemUiVisibility =
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
         } else {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             supportActionBar?.show()
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-            }
+            if (android.os.Build.VERSION.SDK_INT >= 30) window.insetsController?.show(WindowInsets.Type.systemBars())
+            ViewCompat.requestApplyInsets(root)
         }
     }
 
@@ -362,6 +368,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        cancelScan()
         playerView.player = null
         player.release()
         localPlayer.release()
