@@ -65,6 +65,9 @@ class MainActivity : AppCompatActivity() {
         favoriteButton = findViewById(R.id.favoriteButton)
         scanButton = findViewById(R.id.scanButton)
         showAllButton = findViewById(R.id.showAllButton)
+        val channelsTab = findViewById<Button>(R.id.channelsTab)
+        val favoritesTab = findViewById<Button>(R.id.favoritesTab)
+        val scanTab = findViewById<Button>(R.id.scanTab)
         channelList.layoutManager = LinearLayoutManager(this)
 
         localPlayer = ExoPlayer.Builder(this).build()
@@ -85,6 +88,13 @@ class MainActivity : AppCompatActivity() {
             scanResults.clear()
             applySearch()
         }
+        channelsTab.setOnClickListener {
+            val source = PlaylistConfig.playlists.firstOrNull { it.name == currentPlaylist }
+                ?: PlaylistConfig.playlists.first { it.name == "Pakistan" }
+            loadPlaylist(source.name, source.url)
+        }
+        favoritesTab.setOnClickListener { showFavorites() }
+        scanTab.setOnClickListener { scanCurrentList() }
 
         loadPlaylist("Pakistan", PlaylistConfig.playlists.first { it.name == "Pakistan" }.url)
     }
@@ -171,10 +181,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun showChannels(channels: List<Channel>) {
         visibleChannels = channels
-        channelList.adapter = ChannelAdapter(channels) { channel ->
-            currentChannelIndex = allChannels.indexOfFirst { it.url == channel.url }
-            playChannel(channel)
-        }
+        channelList.adapter = ChannelAdapter(
+            channels,
+            { channel -> isFavorite(channel) },
+            { channel -> toggleFavorite(channel) },
+            { channel ->
+                currentChannelIndex = allChannels.indexOfFirst { it.url == channel.url }
+                playChannel(channel)
+            }
+        )
     }
 
     private fun playChannel(channel: Channel) {
@@ -204,6 +219,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleCurrentFavorite() {
         val channel = currentChannel ?: return
+        toggleFavorite(channel)
+    }
+
+    private fun isFavorite(channel: Channel): Boolean =
+        favorites.getStringSet("channels", emptySet())
+            ?.any { it.substringBefore('\t') == channel.url } == true
+
+    private fun toggleFavorite(channel: Channel) {
         val saved = favorites.getStringSet("channels", emptySet())?.toMutableSet() ?: mutableSetOf()
         val existing = saved.firstOrNull { it.substringBefore('\t') == channel.url }
         if (existing != null) saved.remove(existing) else saved.add(channel.url + "\t" + channel.name)
@@ -211,8 +234,8 @@ class MainActivity : AppCompatActivity() {
         updateFavoriteButton()
         if (currentPlaylist == "Favorites") {
             allChannels = readFavorites()
-            applySearch()
         }
+        applySearch()
     }
 
     private fun updateFavoriteButton() {
@@ -240,6 +263,7 @@ class MainActivity : AppCompatActivity() {
         val scanList = if (targets.size > 300) targets.take(300) else targets
         scanButton.isEnabled = false
         scanResults.clear()
+        findViewById<View>(R.id.scanSummary).visibility = View.VISIBLE
         status.text = "Scanning 0/${scanList.size}..."
 
         val pool = Executors.newFixedThreadPool(8)
@@ -254,6 +278,9 @@ class MainActivity : AppCompatActivity() {
                     val working = scanResults.values.count { it == ScanState.WORKING }
                     val bad = scanResults.values.count { it == ScanState.NOT_WORKING }
                     val uncertain = scanResults.values.count { it == ScanState.UNCERTAIN }
+                    findViewById<TextView>(R.id.workingCount).text = "✓ $working Working"
+                    findViewById<TextView>(R.id.notWorkingCount).text = "✕ $bad Not Working"
+                    findViewById<TextView>(R.id.uncertainCount).text = "? $uncertain Uncertain"
                     status.text = "Scanning $completed/${scanList.size} • ✓ $working  ✕ $bad  ? $uncertain"
                     if (completed == scanList.size) {
                         scanButton.isEnabled = true
