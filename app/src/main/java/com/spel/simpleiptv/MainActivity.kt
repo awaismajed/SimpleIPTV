@@ -267,14 +267,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun scanCurrentList() {
         if (visibleChannels.isEmpty() || scanExecutor != null) return
-        val scanList = visibleChannels.take(300)
+        val scanList = visibleChannels.toList()
         val generation = scanGeneration.incrementAndGet()
         scanResults.clear()
         findViewById<View>(R.id.scanSummary).visibility = View.VISIBLE
         scanButton.isEnabled = false
         status.text = "Scanning 0/${scanList.size}..."
 
-        val executor = Executors.newFixedThreadPool(6)
+        val executor = Executors.newFixedThreadPool(12)
         scanExecutor = executor
         val completed = AtomicInteger(0)
 
@@ -284,7 +284,7 @@ class MainActivity : AppCompatActivity() {
                 scanResults[channel.url] = testStream(channel.url)
                 val done = completed.incrementAndGet()
 
-                if (done % 5 == 0 || done == scanList.size) {
+                if (done % 25 == 0 || done == scanList.size) {
                     runOnUiThread {
                         if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
                         updateScanUi(done, scanList.size)
@@ -293,7 +293,7 @@ class MainActivity : AppCompatActivity() {
                             scanButton.isEnabled = true
                             scanExecutor?.shutdown()
                             scanExecutor = null
-                            status.text = "Scan complete • ${scanList.size} channels tested"
+                            status.text = "Scan complete • ${scanList.size} channels tested • ✓ Working  ✕ Offline  ? Uncertain"
                         }
                     }
                 }
@@ -317,8 +317,8 @@ class MainActivity : AppCompatActivity() {
             connection = URL(url).openConnection() as? HttpURLConnection
                 ?: return ChannelScanStatus.UNCERTAIN
             connection.instanceFollowRedirects = true
-            connection.connectTimeout = 3500
-            connection.readTimeout = 3500
+            connection.connectTimeout = 2500
+            connection.readTimeout = 2500
             connection.setRequestProperty("User-Agent", "SimpleIPTV/2.3")
             connection.setRequestProperty("Range", "bytes=0-1023")
             val code = connection.responseCode
