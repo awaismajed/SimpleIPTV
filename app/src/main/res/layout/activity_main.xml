@@ -36,6 +36,10 @@
             android:text="Scan" android:textSize="12sp" android:textAllCaps="false" />
     </LinearLayout>
 
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="48dp" android:scrollbars="none">
+        <LinearLayout android:id="@+id/statusFilters" android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="horizontal" />
+    </HorizontalScrollView>
+
     <TextView android:id="@+id/status" android:layout_width="match_parent"
         android:layout_height="36dp" android:gravity="center_vertical"
         android:paddingHorizontal="14dp" android:text="Loading channels..."
