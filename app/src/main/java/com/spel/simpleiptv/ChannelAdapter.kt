@@ -51,7 +51,7 @@ class ChannelAdapter(
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.star.setOnClickListener {
             onFavorite(channel)
-            notifyItemChanged(holder.bindingAdapterPosition)
+            // The parent refreshes the list after favorites change.
         }
     }
 }
