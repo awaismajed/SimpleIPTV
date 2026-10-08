@@ -7,10 +7,5 @@
             <corners android:radius="8dp"/>
         </shape>
     </item>
-    <item android:gravity="end|center_vertical" android:right="12dp">
-        <shape android:shape="rectangle">
-            <size android:width="7dp" android:height="7dp"/>
-            <solid android:color="#FFFFFF"/>
-        </shape>
-    </item>
+    <item android:gravity="end|center_vertical" android:right="10dp" android:drawable="@drawable/dropdown_chevron"/>
 </layer-list>
