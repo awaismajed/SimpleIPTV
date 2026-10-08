@@ -471,7 +471,18 @@ class MainActivity : AppCompatActivity() {
         playerView.layoutParams = if (landscape)
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(190))
-        findViewById<View>(R.id.topBar).visibility = if (landscape) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.topBar).visibility = View.VISIBLE
+        val panel = findViewById<LinearLayout>(R.id.filterPanel)
+        for (i in 0 until panel.childCount) {
+            val row = panel.getChildAt(i) as? LinearLayout ?: continue
+            for (j in 0 until row.childCount) {
+                val cell = row.getChildAt(j) as? LinearLayout ?: continue
+                for (k in 0 until cell.childCount) {
+                    val child = cell.getChildAt(k)
+                    if (child is TextView) child.visibility = if (landscape) View.GONE else View.VISIBLE
+                }
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
