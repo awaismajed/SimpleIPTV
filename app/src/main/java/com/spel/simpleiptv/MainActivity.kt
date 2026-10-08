@@ -1,6 +1,9 @@
 package com.spel.simpleiptv
 
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.graphics.Color
+import android.view.Gravity
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -102,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         setupCastButton()
         setupDropdowns()
         setupSearch()
+        applyResponsiveLayout(resources.configuration.orientation)
 
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
@@ -156,7 +160,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSpinner(spinner: Spinner, values: List<String>, selected: String, onSelected: (String) -> Unit) {
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, values)
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, values) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val label = super.getView(position, convertView, parent) as TextView
+                label.setTextColor(Color.WHITE)
+                label.textSize = 13f
+                label.gravity = Gravity.CENTER_VERTICAL
+                label.setPadding(10, 0, 24, 0)
+                label.maxLines = 1
+                label.ellipsize = android.text.TextUtils.TruncateAt.END
+                return label
+            }
+            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val label = super.getDropDownView(position, convertView, parent) as TextView
+                label.setTextColor(Color.WHITE)
+                label.setBackgroundColor(Color.rgb(31, 49, 68))
+                label.setPadding(16, 12, 16, 12)
+                label.textSize = 15f
+                return label
+            }
+        }
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinner.adapter = adapter
         spinner.setSelection(values.indexOf(selected).coerceAtLeast(0), false)
@@ -429,6 +452,32 @@ class MainActivity : AppCompatActivity() {
                 status.text = "${player.currentMediaItem?.mediaId ?: "Channel"} • Channel unavailable"
             }
         })
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun applyResponsiveLayout(orientation: Int) {
+        val landscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+        val container = findViewById<LinearLayout>(R.id.contentArea)
+        val videoPane = findViewById<LinearLayout>(R.id.videoPane)
+        val browserPane = findViewById<LinearLayout>(R.id.browserPane)
+        container.orientation = if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        videoPane.layoutParams = if (landscape)
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.1f)
+        else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        browserPane.layoutParams = if (landscape)
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        playerView.layoutParams = if (landscape)
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(190))
+        findViewById<View>(R.id.topBar).visibility = if (landscape) View.GONE else View.VISIBLE
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveLayout(newConfig.orientation)
+        ViewCompat.requestApplyInsets(findViewById(R.id.rootContainer))
     }
 
     private fun toggleFullscreen() {
