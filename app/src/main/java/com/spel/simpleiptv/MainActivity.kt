@@ -54,6 +54,10 @@ class MainActivity : AppCompatActivity() {
     private var fullscreen = false
 
     private val scanResults = ConcurrentHashMap<String, ChannelScanStatus>()
+    private lateinit var scanStore: ScanStore
+    private var statusFilter = "All"
+    private val preferences by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
+    private val playlistGeneration = AtomicInteger(0)
     private var scanExecutor: ExecutorService? = null
     private val scanGeneration = AtomicInteger(0)
     private val favorites by lazy { getSharedPreferences("favorites", MODE_PRIVATE) }
@@ -61,6 +65,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        scanStore = ScanStore(applicationContext)
+        scanResults.putAll(scanStore.load())
+        statusFilter = preferences.getString("status_filter", "All") ?: "All"
         applySafeInsets()
 
         playerView = findViewById(R.id.playerView)
@@ -81,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         setupPlayerListener()
         setupCastButton()
         createPlaylistButtons()
+        setupStatusFilters()
         setupSearch()
 
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
@@ -92,7 +100,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.favoritesTab).setOnClickListener { showFavorites() }
         findViewById<Button>(R.id.scanTab).setOnClickListener { scanCurrentList() }
 
-        loadPlaylist("Pakistan", PlaylistConfig.playlists.first { it.name == "Pakistan" }.url)
+        val initial = preferences.getString("playlist", "Pakistan") ?: "Pakistan"
+        val source = PlaylistConfig.playlists.firstOrNull { it.name == initial } ?: PlaylistConfig.playlists.first()
+        loadPlaylist(source.name, source.url)
     }
 
     private fun applySafeInsets() {
@@ -134,17 +144,34 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun setupStatusFilters() {
+        val row = findViewById<LinearLayout>(R.id.statusFilters)
+        listOf("All", "Working", "Offline", "Uncertain", "Not tested").forEach { label ->
+            row.addView(Button(this).apply {
+                text = label; isAllCaps = false; textSize = 11f
+                minWidth = 0; minimumWidth = 0
+                setOnClickListener {
+                    statusFilter = label
+                    preferences.edit().putString("status_filter", label).apply()
+                    applySearch()
+                }
+            })
+        }
+    }
+
     private fun cancelScan() {
         scanGeneration.incrementAndGet()
         scanExecutor?.shutdownNow()
         scanExecutor = null
         scanButton.isEnabled = true
+        if (::scanButton.isInitialized) scanButton.text = "Scan"
     }
 
     private fun loadPlaylist(name: String, playlistUrl: String) {
         cancelScan()
         currentPlaylist = name
-        scanResults.clear()
+        preferences.edit().putString("playlist", name).apply()
+        val request = playlistGeneration.incrementAndGet()
         findViewById<View>(R.id.scanSummary).visibility = View.GONE
         status.text = "Loading $name channels..."
         allChannels = emptyList()
@@ -161,7 +188,7 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) { emptyList() }
 
             runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (isFinishing || isDestroyed || request != playlistGeneration.get()) return@runOnUiThread
                 allChannels = channels
                 currentChannelIndex = -1
                 applySearch()
@@ -181,7 +208,7 @@ class MainActivity : AppCompatActivity() {
     private fun showFavorites() {
         cancelScan()
         currentPlaylist = "Favorites"
-        scanResults.clear()
+        playlistGeneration.incrementAndGet()
         findViewById<View>(R.id.scanSummary).visibility = View.GONE
         searchBox.setText("")
         allChannels = readFavorites()
@@ -199,7 +226,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun applySearch() {
         val query = searchBox.text.toString().trim()
-        val filtered = allChannels.filter { query.isEmpty() || it.name.contains(query, true) }
+        val filtered = allChannels.filter { channel ->
+            (query.isEmpty() || channel.name.contains(query, true)) && when (statusFilter) {
+                "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
+                "Offline" -> scanResults[channel.url] == ChannelScanStatus.NOT_WORKING
+                "Uncertain" -> scanResults[channel.url] == ChannelScanStatus.UNCERTAIN
+                "Not tested" -> !scanResults.containsKey(channel.url)
+                else -> true
+            }
+        }
         showChannels(filtered)
         status.text = "$currentPlaylist • ${filtered.size} channels"
     }
@@ -266,34 +301,49 @@ class MainActivity : AppCompatActivity() {
         }.sortedBy { it.name.lowercase() }
 
     private fun scanCurrentList() {
-        if (visibleChannels.isEmpty() || scanExecutor != null) return
-        val scanList = visibleChannels.toList()
+        if (allChannels.isEmpty()) return
+        if (scanExecutor != null) {
+            cancelScan()
+            scanButton.text = "Scan"
+            status.text = "Scan paused • results saved"
+            return
+        }
+        val scanList = visibleChannels.distinctBy { it.url }
+            .filter { !scanResults.containsKey(it.url) }
+        if (scanList.isEmpty()) {
+            status.text = "All selected channels already scanned"
+            return
+        }
         val generation = scanGeneration.incrementAndGet()
-        scanResults.clear()
         findViewById<View>(R.id.scanSummary).visibility = View.VISIBLE
-        scanButton.isEnabled = false
-        status.text = "Scanning 0/${scanList.size}..."
-
-        val executor = Executors.newFixedThreadPool(12)
+        scanButton.text = "Stop"
+        status.text = "Scanning 0/${scanList.size} • saved automatically"
+        val executor = Executors.newFixedThreadPool(4)
         scanExecutor = executor
+        val next = AtomicInteger(0)
         val completed = AtomicInteger(0)
-
-        scanList.forEach { channel ->
+        repeat(4) {
             executor.execute {
-                if (generation != scanGeneration.get()) return@execute
-                scanResults[channel.url] = testStream(channel.url)
-                val done = completed.incrementAndGet()
-
-                if (done % 25 == 0 || done == scanList.size) {
-                    runOnUiThread {
-                        if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
-                        updateScanUi(done, scanList.size)
-                        channelList.adapter?.notifyDataSetChanged()
-                        if (done == scanList.size) {
-                            scanButton.isEnabled = true
-                            scanExecutor?.shutdown()
-                            scanExecutor = null
-                            status.text = "Scan complete • ${scanList.size} channels tested • ✓ Working  ✕ Offline  ? Uncertain"
+                while (generation == scanGeneration.get() && !Thread.currentThread().isInterrupted) {
+                    val index = next.getAndIncrement()
+                    if (index >= scanList.size) break
+                    val channel = scanList[index]
+                    val result = testStream(channel.url)
+                    if (generation != scanGeneration.get()) break
+                    scanStore.save(channel.url, result)
+                    scanResults[channel.url] = result
+                    val done = completed.incrementAndGet()
+                    if (done % 50 == 0 || done == scanList.size) {
+                        runOnUiThread {
+                            if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
+                            updateScanUi(done, scanList.size)
+                            channelList.adapter?.notifyDataSetChanged()
+                            if (done == scanList.size) {
+                                executor.shutdown()
+                                scanExecutor = null
+                                scanButton.text = "Scan"
+                                status.text = "Scan complete • ${scanList.size} new channels saved"
+                            }
                         }
                     }
                 }
@@ -378,6 +428,7 @@ class MainActivity : AppCompatActivity() {
         playerView.player = null
         player.release()
         localPlayer.release()
+        scanStore.close()
         super.onDestroy()
     }
 }
