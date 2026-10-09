@@ -2,8 +2,8 @@ package com.spel.simpleiptv
 
 object M3uParser {
     private fun attribute(line: String, name: String): String {
-        val match = Regex("""(?:^|\s)""" + Regex.escape(name) + """="([^"]*)"""", RegexOption.IGNORE_CASE).find(line)
-        return match?.groupValues?.get(1)?.trim().orEmpty()
+        val pattern = Regex("""(?:^|\s)""" + Regex.escape(name) + """="([^"]*)"""", RegexOption.IGNORE_CASE)
+        return pattern.find(line)?.groupValues?.get(1)?.trim().orEmpty()
     }
 
     fun parse(text: String): List<Channel> {
@@ -11,19 +11,23 @@ object M3uParser {
         var name = ""
         var category = ""
         var country = ""
+        var id = ""
+        var logo = ""
+        var language = ""
         text.lineSequence().forEach { raw ->
             val line = raw.trim()
             when {
-                line.startsWith("#EXTINF", true) -> {
-                    name = line.substringAfterLast(',').trim().ifBlank { "Channel" }
+                line.startsWith("#EXTINF", ignoreCase = true) -> {
+                    name = line.substringAfterLast(',').trim().ifBlank { attribute(line, "tvg-name").ifBlank { "Channel" } }
                     category = attribute(line, "group-title")
                     country = attribute(line, "tvg-country")
+                    id = attribute(line, "tvg-id")
+                    logo = attribute(line, "tvg-logo")
+                    language = attribute(line, "tvg-language")
                 }
-                line.isNotBlank() && !line.startsWith("#") -> {
-                    result.add(Channel(name.ifBlank { line }, line, category, country))
-                    name = ""
-                    category = ""
-                    country = ""
+                line.isNotEmpty() && !line.startsWith("#") -> {
+                    result.add(Channel(name.ifBlank { "Channel" }, line, category, country, id, logo, language))
+                    name = ""; category = ""; country = ""; id = ""; logo = ""; language = ""
                 }
             }
         }
