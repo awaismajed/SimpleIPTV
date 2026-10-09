@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var availabilityFilter: Spinner
     private lateinit var categoryFilter: Spinner
     private lateinit var countryFilter: Spinner
+    private lateinit var languageFilter: Spinner
     private lateinit var favoriteButton: Button
     private lateinit var scanButton: Button
 
@@ -71,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     private var statusFilter = "All"
     private var categorySelection = "All categories"
     private var countrySelection = "All countries"
+    private var languageSelection = "All languages"
     private var channelSelection = "Pakistan"
     private var updatingFilters = false
     private var playlistCache: List<Channel> = emptyList()
@@ -103,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         availabilityFilter = findViewById(R.id.availabilityFilter)
         categoryFilter = findViewById(R.id.categoryFilter)
         countryFilter = findViewById(R.id.countryFilter)
+        languageFilter = findViewById(R.id.languageFilter)
         favoriteButton = findViewById(R.id.favoriteButton)
         scanButton = findViewById(R.id.scanButton)
         channelList.layoutManager = LinearLayoutManager(this)
@@ -129,6 +132,23 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.scanTab).setOnClickListener { scanCurrentList() }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
+        findViewById<Button>(R.id.resetFiltersButton).setOnClickListener {
+            categorySelection = "All categories"
+            countrySelection = "All countries"
+            languageSelection = "All languages"
+            statusFilter = "All"
+            preferences.edit().putString("category", categorySelection)
+                .putString("country", countrySelection).putString("language", languageSelection)
+                .putString("status_filter", statusFilter).apply()
+            searchBox.setText("")
+            setupSpinner(availabilityFilter, listOf("All", "Working", "Offline", "Uncertain", "Not tested"), "All") {
+                statusFilter = it
+                preferences.edit().putString("status_filter", it).apply()
+                applySearch()
+            }
+            updateMetadataFilters()
+            applySearch()
+        }
 
         val source = sources.firstOrNull { it.name == channelSelection } ?: sources.first()
         loadPlaylist(source.name, source.url)
@@ -195,6 +215,7 @@ class MainActivity : AppCompatActivity() {
         channelSelection = preferences.getString("playlist", "Pakistan") ?: "Pakistan"
         categorySelection = preferences.getString("category", "All categories") ?: "All categories"
         countrySelection = preferences.getString("country", "All countries") ?: "All countries"
+        languageSelection = preferences.getString("language", "All languages") ?: "All languages"
         setupSpinner(channelFilter, sources.map { it.name }, channelSelection) { selected ->
             if (selected != channelSelection) {
                 channelSelection = selected
@@ -250,7 +271,15 @@ class MainActivity : AppCompatActivity() {
             .map { it.trim() }.filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
         if (categorySelection !in categories) categorySelection = "All categories"
         if (countrySelection !in countries) countrySelection = "All countries"
+        val languages = listOf("All languages") + allChannels.flatMap { it.language.split(';', ',') }
+            .map { it.trim() }.filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
+        if (languageSelection !in languages) languageSelection = "All languages"
         updatingFilters = true
+        setupSpinner(languageFilter, languages, languageSelection) {
+            languageSelection = it
+            preferences.edit().putString("language", it).apply()
+            applySearch()
+        }
         setupSpinner(categoryFilter, categories, categorySelection) {
             categorySelection = it
             preferences.edit().putString("category", it).apply()
@@ -348,6 +377,7 @@ class MainActivity : AppCompatActivity() {
             (query.isEmpty() || listOf(channel.name, channel.category, channel.country, channel.language, channel.id).any { it.contains(query, true) }) &&
             (categorySelection == "All categories" || channel.category.equals(categorySelection, true)) &&
             (countrySelection == "All countries" || channel.country.split(';', ',').any { it.trim().equals(countrySelection, true) }) &&
+            (languageSelection == "All languages" || channel.language.split(';', ',').any { it.trim().equals(languageSelection, true) }) &&
             when (statusFilter) {
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
                 "Offline" -> scanResults[channel.url] == ChannelScanStatus.NOT_WORKING
@@ -357,7 +387,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         showChannels(filtered)
-        status.text = "$currentPlaylist • ${filtered.size} channels"
+        status.text = "$currentPlaylist • ${filtered.size} / ${allChannels.size} channels"
     }
 
     private fun showChannels(channels: List<Channel>) {
@@ -542,7 +572,7 @@ class MainActivity : AppCompatActivity() {
                 val cell = row.getChildAt(j) as? LinearLayout ?: continue
                 for (k in 0 until cell.childCount) {
                     val child = cell.getChildAt(k)
-                    if (child is TextView) child.visibility = if (landscape) View.GONE else View.VISIBLE
+                    if (child is TextView && child !is Button) child.visibility = if (landscape) View.GONE else View.VISIBLE
                 }
             }
         }
