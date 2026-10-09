@@ -46,7 +46,7 @@ class ChannelAdapter(
             ChannelScanStatus.UNCERTAIN -> "Uncertain"
             ChannelScanStatus.NOT_TESTED -> ""
         }
-        holder.subtitle.text = if (state == ChannelScanStatus.NOT_TESTED) "Live channel" else "Scan result"
+        holder.subtitle.text = listOf(channel.category, channel.country, channel.language).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { if (state == ChannelScanStatus.NOT_TESTED) "Live channel" else "Scan result" }
         holder.star.text = if (isFavorite(channel)) "★" else "☆"
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.star.setOnClickListener {
