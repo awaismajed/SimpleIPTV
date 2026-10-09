@@ -5,6 +5,10 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.view.Gravity
 import android.os.Bundle
+import android.app.AlertDialog
+import android.net.Uri
+import android.content.Intent
+import java.io.File
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -69,6 +73,14 @@ class MainActivity : AppCompatActivity() {
     private var countrySelection = "All countries"
     private var channelSelection = "Pakistan"
     private var updatingFilters = false
+    private var playlistCache: List<Channel> = emptyList()
+    private var cachedPlaylistName = ""
+    private val customSources: List<PlaylistSource>
+        get() = preferences.getStringSet("custom_sources", emptySet()).orEmpty().mapNotNull {
+            val p = it.split("\t", limit = 2)
+            if (p.size == 2) PlaylistSource(p[0], p[1]) else null
+        }.sortedBy { it.name }
+    private val sources: List<PlaylistSource> get() = PlaylistConfig.playlists + customSources
     private val preferences by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
     private val playlistGeneration = AtomicInteger(0)
     private var scanExecutor: ExecutorService? = null
@@ -115,9 +127,49 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.channelsTab).setOnClickListener { showCurrentCategory() }
         findViewById<Button>(R.id.favoritesTab).setOnClickListener { showFavorites() }
         findViewById<Button>(R.id.scanTab).setOnClickListener { scanCurrentList() }
+        findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
+        findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
 
-        val source = PlaylistConfig.playlists.firstOrNull { it.name == channelSelection } ?: PlaylistConfig.playlists.first()
+        val source = sources.firstOrNull { it.name == channelSelection } ?: sources.first()
         loadPlaylist(source.name, source.url)
+    }
+
+    private fun showAddPlaylist() {
+        val input = EditText(this).apply {
+            hint = "https://example.com/channels.m3u"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Add M3U playlist URL")
+            .setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Add") { _, _ ->
+                val url = input.text.toString().trim()
+                val parsed = runCatching { Uri.parse(url) }.getOrNull()
+                if (parsed?.scheme !in listOf("https", "http") || parsed?.host.isNullOrBlank()) {
+                    status.text = "Enter a valid HTTP(S) playlist URL"
+                } else {
+                    val name = "Custom " + (customSources.size + 1)
+                    val updated = preferences.getStringSet("custom_sources", emptySet()).orEmpty().toMutableSet()
+                    updated.add(name + "\t" + url)
+                    preferences.edit().putStringSet("custom_sources", updated).apply()
+                    channelSelection = name
+                    setupSpinner(channelFilter, sources.map { it.name }, name) { selected ->
+                        if (selected != channelSelection) {
+                            channelSelection = selected
+                            val source = sources.first { it.name == selected }
+                            loadPlaylist(source.name, source.url)
+                        }
+                    }
+                    loadPlaylist(name, url)
+                }
+            }.show()
+    }
+
+    private fun refreshCurrentPlaylist() {
+        val source = sources.firstOrNull { it.name == channelSelection } ?: return
+        loadPlaylist(source.name, source.url, forceRefresh = true)
     }
 
     private fun applySafeInsets() {
@@ -143,11 +195,11 @@ class MainActivity : AppCompatActivity() {
         channelSelection = preferences.getString("playlist", "Pakistan") ?: "Pakistan"
         categorySelection = preferences.getString("category", "All categories") ?: "All categories"
         countrySelection = preferences.getString("country", "All countries") ?: "All countries"
-        setupSpinner(channelFilter, PlaylistConfig.playlists.map { it.name }, channelSelection) { selected ->
+        setupSpinner(channelFilter, sources.map { it.name }, channelSelection) { selected ->
             if (selected != channelSelection) {
                 channelSelection = selected
                 searchBox.setText("")
-                val source = PlaylistConfig.playlists.first { it.name == selected }
+                val source = sources.first { it.name == selected }
                 loadPlaylist(source.name, source.url)
             }
         }
@@ -196,6 +248,8 @@ class MainActivity : AppCompatActivity() {
             .filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
         val countries = listOf("All countries") + allChannels.flatMap { it.country.split(';', ',') }
             .map { it.trim() }.filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
+        if (categorySelection !in categories) categorySelection = "All categories"
+        if (countrySelection !in countries) countrySelection = "All countries"
         updatingFilters = true
         setupSpinner(categoryFilter, categories, categorySelection) {
             categorySelection = it
@@ -207,8 +261,6 @@ class MainActivity : AppCompatActivity() {
             preferences.edit().putString("country", it).apply()
             applySearch()
         }
-        if (categorySelection !in categories) categorySelection = "All categories"
-        if (countrySelection !in countries) countrySelection = "All countries"
         updatingFilters = false
     }
 
@@ -220,13 +272,19 @@ class MainActivity : AppCompatActivity() {
         if (::scanButton.isInitialized) scanButton.text = "Scan"
     }
 
-    private fun loadPlaylist(name: String, playlistUrl: String) {
+    private fun loadPlaylist(name: String, playlistUrl: String, forceRefresh: Boolean = false) {
         cancelScan()
         currentPlaylist = name
         preferences.edit().putString("playlist", name).apply()
         val request = playlistGeneration.incrementAndGet()
         findViewById<View>(R.id.scanSummary).visibility = View.GONE
         status.text = "Loading $name channels..."
+        if (!forceRefresh && cachedPlaylistName == name && playlistCache.isNotEmpty()) {
+            allChannels = playlistCache
+            updateMetadataFilters()
+            applySearch()
+            return
+        }
         allChannels = emptyList()
         showChannels(emptyList())
 
@@ -236,12 +294,17 @@ class MainActivity : AppCompatActivity() {
                 connection.connectTimeout = 15000
                 connection.readTimeout = 20000
                 connection.setRequestProperty("User-Agent", "SimpleIPTV/2.3")
-                connection.inputStream.bufferedReader().use { M3uParser.parse(it.readText()) }
-                    .also { connection.disconnect() }
+                try {
+                    connection.inputStream.bufferedReader().use { M3uParser.parse(it.readText()) }
+                } finally { connection.disconnect() }
             } catch (_: Exception) { emptyList() }
 
             runOnUiThread {
                 if (isFinishing || isDestroyed || request != playlistGeneration.get()) return@runOnUiThread
+                if (channels.isNotEmpty()) {
+                    cachedPlaylistName = name
+                    playlistCache = channels
+                }
                 allChannels = channels
                 updateMetadataFilters()
                 currentChannelIndex = -1
@@ -252,7 +315,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCurrentCategory() {
         if (currentPlaylist == "Favorites") {
-            val source = PlaylistConfig.playlists.first { it.name == "Pakistan" }
+            val source = sources.firstOrNull { it.name == channelSelection } ?: sources.first()
             loadPlaylist(source.name, source.url)
         } else {
             applySearch()
@@ -282,7 +345,7 @@ class MainActivity : AppCompatActivity() {
     private fun applySearch() {
         val query = searchBox.text.toString().trim()
         val filtered = allChannels.filter { channel ->
-            (query.isEmpty() || channel.name.contains(query, true)) &&
+            (query.isEmpty() || listOf(channel.name, channel.category, channel.country, channel.language, channel.id).any { it.contains(query, true) }) &&
             (categorySelection == "All categories" || channel.category.equals(categorySelection, true)) &&
             (countrySelection == "All countries" || channel.country.split(';', ',').any { it.trim().equals(countrySelection, true) }) &&
             when (statusFilter) {
@@ -305,7 +368,7 @@ class MainActivity : AppCompatActivity() {
             { scanResults[it.url] ?: ChannelScanStatus.NOT_TESTED },
             { toggleFavorite(it) },
             {
-                currentChannelIndex = allChannels.indexOfFirst { c -> c.url == it.url }
+                currentChannelIndex = visibleChannels.indexOfFirst { c -> c.url == it.url }
                 playChannel(it)
             }
         )
@@ -323,16 +386,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playNext() {
-        if (allChannels.isEmpty()) return
-        currentChannelIndex = (currentChannelIndex + 1).mod(allChannels.size)
-        playChannel(allChannels[currentChannelIndex])
+        if (visibleChannels.isEmpty()) return
+        currentChannelIndex = (visibleChannels.indexOfFirst { it.url == currentChannel?.url } + 1).mod(visibleChannels.size)
+        playChannel(visibleChannels[currentChannelIndex])
     }
 
     private fun playPrevious() {
-        if (allChannels.isEmpty()) return
-        currentChannelIndex--
-        if (currentChannelIndex < 0) currentChannelIndex = allChannels.lastIndex
-        playChannel(allChannels[currentChannelIndex])
+        if (visibleChannels.isEmpty()) return
+        val index = visibleChannels.indexOfFirst { it.url == currentChannel?.url }
+        currentChannelIndex = if (index <= 0) visibleChannels.lastIndex else index - 1
+        playChannel(visibleChannels[currentChannelIndex])
     }
 
     private fun isFavorite(channel: Channel) =
@@ -341,7 +404,7 @@ class MainActivity : AppCompatActivity() {
     private fun toggleFavorite(channel: Channel) {
         val saved = favorites.getStringSet("channels", emptySet())?.toMutableSet() ?: mutableSetOf()
         val existing = saved.firstOrNull { it.substringBefore('\t') == channel.url }
-        if (existing == null) saved.add(channel.url + "\t" + channel.name) else saved.remove(existing)
+        if (existing == null) saved.add(listOf(channel.url, channel.name, channel.category, channel.country, channel.id, channel.logo, channel.language).joinToString("\t")) else saved.remove(existing)
         favorites.edit().putStringSet("channels", saved).apply()
         updateFavoriteButton()
         if (currentPlaylist == "Favorites") allChannels = readFavorites()
@@ -354,8 +417,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun readFavorites() = favorites.getStringSet("channels", emptySet()).orEmpty()
         .mapNotNull {
-            val p = it.split('\t', limit = 2)
-            if (p.size == 2) Channel(p[1], p[0]) else null
+            val p = it.split('\t')
+            if (p.size >= 2) Channel(p[1], p[0], p.getOrElse(2) { "" }, p.getOrElse(3) { "" }, p.getOrElse(4) { "" }, p.getOrElse(5) { "" }, p.getOrElse(6) { "" }) else null
         }.sortedBy { it.name.lowercase() }
 
     private fun scanCurrentList() {
