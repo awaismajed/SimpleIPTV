@@ -9,7 +9,7 @@
         android:layout_height="48dp" android:gravity="center_vertical"
         android:paddingHorizontal="12dp" android:background="#0E1925">
         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:text="Simple IPTV 4.0"
+            android:layout_weight="1" android:text="SimpleIPTV 4.0"
             android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold"/>
         <Button android:id="@+id/addPlaylistButton"
             android:layout_width="52dp" android:layout_height="44dp"
@@ -59,7 +59,7 @@
                         android:layout_height="wrap_content" android:orientation="vertical"
                         android:layout_marginEnd="4dp">
                         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                            android:text="CHANNEL" android:textColor="#AFC4D7" android:textSize="10sp"/>
+                            android:text="PLAYLIST" android:textColor="#AFC4D7" android:textSize="10sp"/>
                         <Spinner android:id="@+id/channelFilter" android:layout_width="match_parent"
                             android:layout_height="44dp" android:background="@drawable/filter_dropdown"
                             android:paddingHorizontal="10dp" android:spinnerMode="dropdown"/>
@@ -96,12 +96,27 @@
                             android:paddingHorizontal="10dp" android:spinnerMode="dropdown"/>
                     </LinearLayout>
                 </LinearLayout>
+                <LinearLayout android:id="@+id/advancedFilterRow"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical"
+                    android:layout_marginTop="5dp">
+                    <TextView android:layout_width="70dp" android:layout_height="wrap_content"
+                        android:text="LANGUAGE" android:textColor="#AFC4D7"
+                        android:textSize="10sp"/>
+                    <Spinner android:id="@+id/languageFilter" android:layout_width="0dp"
+                        android:layout_height="44dp" android:layout_weight="1"
+                        android:background="@drawable/filter_dropdown"
+                        android:paddingHorizontal="10dp" android:spinnerMode="dropdown"/>
+                    <Button android:id="@+id/resetFiltersButton" android:layout_width="72dp"
+                        android:layout_height="44dp" android:layout_marginStart="6dp"
+                        android:text="Reset" android:textAllCaps="false" android:textSize="12sp"/>
+                </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
                     android:orientation="horizontal" android:gravity="center_vertical"
                     android:layout_marginTop="4dp">
                     <EditText android:id="@+id/searchBox" android:layout_width="0dp"
                         android:layout_height="44dp" android:layout_weight="1"
-                        android:hint="Search channels…" android:singleLine="true"
+                        android:hint="Search name, language, country…" android:singleLine="true"
                         android:paddingHorizontal="12dp" android:textColor="#FFFFFF"
                         android:textColorHint="#AFC4D7" android:background="#172638"/>
                     <Button android:id="@+id/scanButton" android:layout_width="76dp"
@@ -135,7 +150,7 @@
                 android:gravity="center" android:background="#0E1925" android:paddingHorizontal="4dp">
                 <Button android:id="@+id/channelsTab" android:layout_width="0dp"
                     android:layout_height="46dp" android:layout_weight="1"
-                    android:text="Channels" android:textSize="12sp" android:textAllCaps="false"/>
+                    android:text="All Channels" android:textSize="12sp" android:textAllCaps="false"/>
                 <Button android:id="@+id/favoritesTab" android:layout_width="0dp"
                     android:layout_height="46dp" android:layout_weight="1"
                     android:text="★ Favorites" android:textSize="12sp" android:textAllCaps="false"/>
