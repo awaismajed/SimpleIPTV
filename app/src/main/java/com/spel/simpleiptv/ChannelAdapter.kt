@@ -48,7 +48,7 @@ class ChannelAdapter(
             holder.logo.setImageDrawable(null)
             holder.logo.visibility = View.GONE
         }
-        holder.subtitle.text = listOf(channel.category, channel.country, channel.language).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { if (state == ChannelScanStatus.NOT_TESTED) "Live channel" else "Scan result" }
+        holder.subtitle.text = listOf(channel.category, channel.country, channel.language).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "Live channel" }
         holder.star.text = if (isFavorite(channel)) "★" else "☆"
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.star.setOnClickListener {
