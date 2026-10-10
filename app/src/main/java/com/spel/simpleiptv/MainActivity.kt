@@ -390,10 +390,9 @@ class MainActivity : AppCompatActivity() {
                 else -> true
             }
             matches && modeMatches && when (mode) {
-                "All", "Favorites" -> true
+                "All" -> true
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
-                else -> !scanCompleted || !preferences.getBoolean("only_working", true) ||
-                    scanResults[channel.url] == ChannelScanStatus.WORKING
+                else -> scanResults[channel.url] == ChannelScanStatus.WORKING
             }
         }
         showChannels(filtered)
