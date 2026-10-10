@@ -16,6 +16,7 @@ import android.view.WindowInsets
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
+import android.widget.CheckBox
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -53,7 +54,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchBox: EditText
     private lateinit var channelList: RecyclerView
     private lateinit var channelFilter: Spinner
-    private lateinit var favoriteButton: Button
     private lateinit var scanButton: Button
 
     private var allChannels: List<Channel> = emptyList()
@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     private val preferences by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
     private val playlistGeneration = AtomicInteger(0)
     private var scanExecutor: ExecutorService? = null
+    @Volatile private var scanLoading = false
     private val scanGeneration = AtomicInteger(0)
     private val favorites by lazy { getSharedPreferences("favorites", MODE_PRIVATE) }
 
@@ -97,7 +98,6 @@ class MainActivity : AppCompatActivity() {
         searchBox = findViewById(R.id.searchBox)
         channelList = findViewById(R.id.channelList)
         channelFilter = findViewById(R.id.channelFilter)
-        favoriteButton = findViewById(R.id.favoriteButton)
         scanButton = findViewById(R.id.scanButton)
         channelList.layoutManager = LinearLayoutManager(this)
 
@@ -116,8 +116,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
-        favoriteButton.setOnClickListener { currentChannel?.let { toggleFavorite(it) } }
         scanButton.setOnClickListener { scanCurrentList() }
+        findViewById<CheckBox>(R.id.onlyWorkingSetting).apply {
+            isChecked = preferences.getBoolean("only_working", true)
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean("only_working", checked).apply()
+                applySearch()
+            }
+        }
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
@@ -186,9 +192,8 @@ class MainActivity : AppCompatActivity() {
 
     private val categoryGroups = listOf("Sports", "Religious", "News", "Movies", "Entertainment", "Kids", "Music", "Documentary", "Education", "Lifestyle", "Other")
     private val browseOptions: List<String>
-        get() = listOf("All", "Working", "Not working", "Uncertain", "Favorites") +
-            sources.filter { it.name != "All" }.map { it.name } +
-            categoryGroups.filter { group -> sources.none { it.name.equals(group, true) } }
+        get() = (listOf("All", "Working", "Favorites") +
+            sources.filter { it.name != "All" }.map { it.name } + categoryGroups).distinct()
 
     private fun categoryGroup(channel: Channel): String {
         val text = (channel.category + " " + channel.name).lowercase()
@@ -244,9 +249,9 @@ class MainActivity : AppCompatActivity() {
         showingSettings = show
         findViewById<View>(R.id.contentArea).visibility = if (show) View.GONE else View.VISIBLE
         findViewById<View>(R.id.settingsPage).visibility = if (show) View.VISIBLE else View.GONE
-        if (show) {
+        if (show && scanExecutor == null && !scanLoading) {
             findViewById<TextView>(R.id.settingsScanStatus).text =
-                if (scanExecutor != null) "Scan in progress" else if (scanCompleted) "Last scan saved" else "No completed scan"
+                if (scanCompleted) "Last scan saved" else "No completed scan"
         }
     }
 
@@ -291,6 +296,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun cancelScan() {
         scanGeneration.incrementAndGet()
+        scanLoading = false
         scanExecutor?.shutdownNow()
         scanExecutor = null
         if (::scanButton.isInitialized) scanButton.text = "Scan all channels"
@@ -301,7 +307,6 @@ class MainActivity : AppCompatActivity() {
         currentPlaylist = name
         preferences.edit().putString("playlist", name).apply()
         val request = playlistGeneration.incrementAndGet()
-        findViewById<View>(R.id.scanSummary).visibility = View.GONE
         status.text = "Loading $name channels..."
         if (!forceRefresh && cachedPlaylistName == name && playlistCache.isNotEmpty()) {
             allChannels = playlistCache
@@ -350,7 +355,6 @@ class MainActivity : AppCompatActivity() {
         cancelScan()
         currentPlaylist = "Favorites"
         playlistGeneration.incrementAndGet()
-        findViewById<View>(R.id.scanSummary).visibility = View.GONE
         searchBox.setText("")
         allChannels = readFavorites()
         updateMetadataFilters()
@@ -374,19 +378,16 @@ class MainActivity : AppCompatActivity() {
                 .any { it.contains(query, true) }
             val modeMatches = when (mode) {
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
-                "Not working" -> scanResults[channel.url] == ChannelScanStatus.NOT_WORKING
-                "Uncertain" -> scanResults[channel.url] == ChannelScanStatus.UNCERTAIN
                 "Favorites" -> isFavorite(channel)
                 in categoryGroups -> categoryGroup(channel) == mode
                 else -> true
             }
             matches && modeMatches &&
-                (!scanCompleted || mode in listOf("Not working", "Uncertain", "All", "Favorites") ||
-                 scanResults[channel.url] == ChannelScanStatus.WORKING)
+                (!scanCompleted || !preferences.getBoolean("only_working", true) ||
+                 mode == "Favorites" || scanResults[channel.url] == ChannelScanStatus.WORKING)
         }
         showChannels(filtered)
-        status.text = "$mode • ${filtered.size} channels" +
-            if (scanCompleted && mode == "All") " • all scan statuses" else ""
+        status.text = "$mode • ${filtered.size} channels"
     }
 
 
@@ -411,7 +412,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun playChannel(channel: Channel) {
         currentChannel = channel
-        updateFavoriteButton()
+        findViewById<TextView>(R.id.nowPlaying).text = "▶  ${channel.name}"
         status.text = "Loading: ${channel.name}"
         player.stop()
         player.clearMediaItems()
@@ -455,7 +456,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun updateFavoriteButton() {
-        favoriteButton.text = if (currentChannel?.let { isFavorite(it) } == true) "★ Favorite" else "☆ Favorite"
+
     }
 
     private fun readFavorites() = favorites.getStringSet("channels", emptySet()).orEmpty()
@@ -465,51 +466,84 @@ class MainActivity : AppCompatActivity() {
         }.sortedBy { it.name.lowercase() }
 
     private fun scanCurrentList() {
-        if (scanExecutor != null) {
+        if (scanExecutor != null || scanLoading) {
             cancelScan()
-            findViewById<TextView>(R.id.settingsScanStatus).text = "Scan stopped; previous completed results retained"
+            findViewById<TextView>(R.id.settingsScanStatus).text = "Scan stopped"
             return
         }
-        if (allChannels.isEmpty()) {
-            findViewById<TextView>(R.id.settingsScanStatus).text = "Load a playlist before scanning"
-            return
-        }
-        val scanList = allChannels.distinctBy { it.url }
         val generation = scanGeneration.incrementAndGet()
-        val executor = Executors.newFixedThreadPool(4)
-        scanExecutor = executor
+        scanLoading = true
         scanButton.text = "Stop scan"
-        val completed = AtomicInteger(0)
-        val next = AtomicInteger(0)
-        findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning 0 / ${scanList.size}"
-        repeat(4) {
-            executor.execute {
-                while (generation == scanGeneration.get() && !Thread.currentThread().isInterrupted) {
-                    val index = next.getAndIncrement()
-                    if (index >= scanList.size) break
-                    val channel = scanList[index]
-                    val result = testStream(channel.url)
-                    if (generation != scanGeneration.get()) break
-                    scanStore.save(channel.url, result)
-                    scanResults[channel.url] = result
-                    val done = completed.incrementAndGet()
-                    if (done % 25 == 0 || done == scanList.size) {
-                        runOnUiThread {
-                            if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
-                            findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning $done / ${scanList.size}"
-                            if (browseSelection == "Working" && done != scanList.size) applySearch()
-                            if (done == scanList.size) {
-                                scanCompleted = true
-                                preferences.edit().putBoolean("scan_completed", true).apply()
-                                executor.shutdown()
-                                scanExecutor = null
-                                scanButton.text = "Scan all channels again"
-                                browseSelection = "Working"
-                                preferences.edit().putString("browse", "Working").apply()
-                                setupBrowseFilter()
-                                loadBrowseSelection()
-                                findViewById<TextView>(R.id.settingsScanStatus).text = "Scan complete: showing working channels"
-                                showSettings(false)
+        findViewById<TextView>(R.id.settingsScanStatus).text = "Loading all playlist sources..."
+        thread {
+            val catalog = LinkedHashMap<String, Channel>()
+            val scanSources = sources.distinctBy { it.url }
+            var failures = 0
+            for (source in scanSources) {
+                if (generation != scanGeneration.get()) return@thread
+                try {
+                    val conn = URL(source.url).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 30000
+                    try {
+                        conn.inputStream.bufferedReader().use { reader ->
+                            M3uParser.parse(reader.readText()).forEach { channel ->
+                                if (channel.url.isNotBlank()) catalog.putIfAbsent(channel.url, channel)
+                            }
+                        }
+                    } finally { conn.disconnect() }
+                } catch (_: Exception) { failures++ }
+            }
+            if (generation != scanGeneration.get()) return@thread
+            val scanList = catalog.values.toList()
+            val failedSources = failures
+            runOnUiThread {
+                if (generation != scanGeneration.get() || isDestroyed) return@runOnUiThread
+                scanLoading = false
+                if (scanList.isEmpty()) {
+                    scanButton.text = "Scan all channels"
+                    findViewById<TextView>(R.id.settingsScanStatus).text = "Unable to load channels. Check internet and retry."
+                    return@runOnUiThread
+                }
+                val executor = Executors.newFixedThreadPool(4)
+                scanExecutor = executor
+                val next = AtomicInteger()
+                val completed = AtomicInteger()
+                val working = AtomicInteger()
+                findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning 0 / ${scanList.size}"
+                repeat(4) {
+                    executor.execute {
+                        while (generation == scanGeneration.get() && !Thread.currentThread().isInterrupted) {
+                            val index = next.getAndIncrement()
+                            if (index >= scanList.size) break
+                            val channel = scanList[index]
+                            val result = testStream(channel.url)
+                            if (generation != scanGeneration.get()) break
+                            scanStore.save(channel.url, result)
+                            scanResults[channel.url] = result
+                            if (result == ChannelScanStatus.WORKING) working.incrementAndGet()
+                            val done = completed.incrementAndGet()
+                            if (done % 50 == 0 || done == scanList.size) {
+                                runOnUiThread {
+                                    if (generation != scanGeneration.get() || isDestroyed) return@runOnUiThread
+                                    findViewById<TextView>(R.id.settingsScanStatus).text =
+                                        "Scanned $done / ${scanList.size} • ${working.get()} reachable"
+                                    if (browseSelection == "Working" && !showingSettings) applySearch()
+                                    if (done == scanList.size) {
+                                        executor.shutdown()
+                                        scanExecutor = null
+                                        scanCompleted = true
+                                        preferences.edit().putBoolean("scan_completed", true)
+                                            .putString("browse", "Working").apply()
+                                        browseSelection = "Working"
+                                        scanButton.text = "Scan all channels again"
+                                        setupBrowseFilter()
+                                        loadBrowseSelection()
+                                        findViewById<TextView>(R.id.settingsScanStatus).text =
+                                            "Finished: ${working.get()} reachable of ${scanList.size}; $failedSources sources unavailable"
+                                        showSettings(false)
+                                    }
+                                }
                             }
                         }
                     }
@@ -519,15 +553,11 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
     private fun updateScanUi(done: Int, total: Int) {
-        val working = scanResults.values.count { it == ChannelScanStatus.WORKING }
-        val offline = scanResults.values.count { it == ChannelScanStatus.NOT_WORKING }
-        val uncertain = scanResults.values.count { it == ChannelScanStatus.UNCERTAIN }
-        findViewById<TextView>(R.id.workingCount).text = "✓ $working Working"
-        findViewById<TextView>(R.id.notWorkingCount).text = "✕ $offline Offline"
-        findViewById<TextView>(R.id.uncertainCount).text = "Uncertain $uncertain"
-        status.text = "Scanning $done/$total"
+        findViewById<TextView>(R.id.settingsScanStatus).text = "Scanned $done / $total"
     }
+
 
     private fun testStream(url: String): ChannelScanStatus {
         var connection: HttpURLConnection? = null
