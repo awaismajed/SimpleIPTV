@@ -37,10 +37,16 @@
                 android:background="#0E1925" android:paddingHorizontal="4dp">
                 <Button android:id="@+id/previousButton" android:layout_width="0dp"
                     android:layout_height="44dp" android:layout_weight="1" android:text="◀"/>
+                <Button android:id="@+id/stopButton" android:layout_width="0dp"
+                    android:layout_height="44dp" android:layout_weight="1"
+                    android:text="■" android:contentDescription="Stop playback"/>
                 <Button android:id="@+id/nextButton" android:layout_width="0dp"
                     android:layout_height="44dp" android:layout_weight="1" android:text="▶"/>
                 <Button android:id="@+id/fullscreenButton" android:layout_width="0dp"
                     android:layout_height="44dp" android:layout_weight="1" android:text="⛶"/>
+                <Button android:id="@+id/settingsButton" android:layout_width="0dp"
+                    android:layout_height="44dp" android:layout_weight="1"
+                    android:text="⚙" android:contentDescription="Settings"/>
             </LinearLayout>
         </LinearLayout>
 
@@ -68,17 +74,6 @@
             <androidx.recyclerview.widget.RecyclerView android:id="@+id/channelList"
                 android:layout_width="match_parent" android:layout_height="0dp"
                 android:layout_weight="1"/>
-            <LinearLayout android:id="@+id/bottomNav" android:layout_width="match_parent"
-                android:layout_height="50dp" android:gravity="center_vertical"
-                android:orientation="horizontal" android:background="#0E1925"
-                android:paddingHorizontal="10dp">
-                <TextView android:layout_width="0dp" android:layout_weight="1"
-                    android:layout_height="wrap_content" android:text="SimpleIPTV"
-                    android:textColor="#AFC4D7" android:textSize="13sp"/>
-                <Button android:id="@+id/settingsButton" android:layout_width="130dp"
-                    android:layout_height="46dp" android:text="⚙ Settings"
-                    android:textAllCaps="false" android:textSize="13sp"/>
-            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
     <ScrollView android:id="@+id/settingsPage" android:layout_width="match_parent"
