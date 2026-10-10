@@ -32,20 +32,17 @@
                 android:singleLine="true" android:ellipsize="marquee"
                 android:selected="true"/>
             <LinearLayout android:id="@+id/playbackControls"
-                android:layout_width="match_parent" android:layout_height="48dp"
+                android:layout_width="match_parent" android:layout_height="60dp"
                 android:orientation="horizontal" android:gravity="center"
-                android:background="#0E1925" android:paddingHorizontal="4dp">
+                android:background="#0E1925" android:paddingHorizontal="8dp">
                 <Button android:id="@+id/previousButton" android:layout_width="0dp"
-                    android:layout_height="44dp" android:layout_weight="1" android:text="◀"/>
-                <Button android:id="@+id/stopButton" android:layout_width="0dp"
-                    android:layout_height="44dp" android:layout_weight="1"
-                    android:text="■" android:contentDescription="Stop playback"/>
+                    android:layout_height="52dp" android:layout_weight="1" android:layout_marginHorizontal="4dp" android:background="@drawable/player_control_button" android:textColor="#FFFFFF" android:textSize="22sp" android:textAllCaps="false" android:contentDescription="Previous channel" android:text="◀"/>
                 <Button android:id="@+id/nextButton" android:layout_width="0dp"
-                    android:layout_height="44dp" android:layout_weight="1" android:text="▶"/>
+                    android:layout_height="52dp" android:layout_weight="1" android:layout_marginHorizontal="4dp" android:background="@drawable/player_control_button" android:textColor="#FFFFFF" android:textSize="22sp" android:textAllCaps="false" android:contentDescription="Next channel" android:text="▶"/>
                 <Button android:id="@+id/fullscreenButton" android:layout_width="0dp"
-                    android:layout_height="44dp" android:layout_weight="1" android:text="⛶"/>
+                    android:layout_height="52dp" android:layout_weight="1" android:layout_marginHorizontal="4dp" android:background="@drawable/player_control_button" android:textColor="#FFFFFF" android:textSize="22sp" android:textAllCaps="false" android:contentDescription="Change orientation" android:text="⛶"/>
                 <Button android:id="@+id/settingsButton" android:layout_width="0dp"
-                    android:layout_height="44dp" android:layout_weight="1"
+                    android:layout_height="52dp" android:layout_weight="1" android:layout_marginHorizontal="4dp" android:background="@drawable/player_control_button" android:textColor="#FFFFFF" android:textSize="22sp" android:textAllCaps="false" android:contentDescription="Open settings"
                     android:text="⚙" android:contentDescription="Settings"/>
             </LinearLayout>
         </LinearLayout>
