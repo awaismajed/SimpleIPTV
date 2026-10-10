@@ -53,10 +53,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchBox: EditText
     private lateinit var channelList: RecyclerView
     private lateinit var channelFilter: Spinner
-    private lateinit var availabilityFilter: Spinner
-    private lateinit var categoryFilter: Spinner
-    private lateinit var countryFilter: Spinner
-    private lateinit var languageFilter: Spinner
     private lateinit var favoriteButton: Button
     private lateinit var scanButton: Button
 
@@ -69,12 +65,11 @@ class MainActivity : AppCompatActivity() {
 
     private val scanResults = ConcurrentHashMap<String, ChannelScanStatus>()
     private lateinit var scanStore: ScanStore
-    private var statusFilter = "All"
-    private var categorySelection = "All categories"
-    private var countrySelection = "All countries"
-    private var languageSelection = "All languages"
     private var channelSelection = "Pakistan"
     private var updatingFilters = false
+    private var browseSelection = "All"
+    private var scanCompleted = false
+    private var showingSettings = false
     private var playlistCache: List<Channel> = emptyList()
     private var cachedPlaylistName = ""
     private val customSources: List<PlaylistSource>
@@ -93,8 +88,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         scanStore = ScanStore(applicationContext)
-        scanResults.putAll(scanStore.load())
-        statusFilter = preferences.getString("status_filter", "All") ?: "All"
+        scanResults.putAll(scanStore.load(Long.MAX_VALUE))
+        scanCompleted = preferences.getBoolean("scan_completed", false)
         applySafeInsets()
 
         playerView = findViewById(R.id.playerView)
@@ -102,10 +97,6 @@ class MainActivity : AppCompatActivity() {
         searchBox = findViewById(R.id.searchBox)
         channelList = findViewById(R.id.channelList)
         channelFilter = findViewById(R.id.channelFilter)
-        availabilityFilter = findViewById(R.id.availabilityFilter)
-        categoryFilter = findViewById(R.id.categoryFilter)
-        countryFilter = findViewById(R.id.countryFilter)
-        languageFilter = findViewById(R.id.languageFilter)
         favoriteButton = findViewById(R.id.favoriteButton)
         scanButton = findViewById(R.id.scanButton)
         channelList.layoutManager = LinearLayoutManager(this)
@@ -127,31 +118,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
         favoriteButton.setOnClickListener { currentChannel?.let { toggleFavorite(it) } }
         scanButton.setOnClickListener { scanCurrentList() }
-        findViewById<Button>(R.id.channelsTab).setOnClickListener { showCurrentCategory() }
-        findViewById<Button>(R.id.favoritesTab).setOnClickListener { showFavorites() }
-        findViewById<Button>(R.id.scanTab).setOnClickListener { scanCurrentList() }
+        findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
+        findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
-        findViewById<Button>(R.id.resetFiltersButton).setOnClickListener {
-            categorySelection = "All categories"
-            countrySelection = "All countries"
-            languageSelection = "All languages"
-            statusFilter = "All"
-            preferences.edit().putString("category", categorySelection)
-                .putString("country", countrySelection).putString("language", languageSelection)
-                .putString("status_filter", statusFilter).apply()
-            searchBox.setText("")
-            setupSpinner(availabilityFilter, listOf("All", "Working", "Offline", "Uncertain", "Not tested"), "All") {
-                statusFilter = it
-                preferences.edit().putString("status_filter", it).apply()
-                applySearch()
-            }
-            updateMetadataFilters()
-            applySearch()
-        }
-
-        val source = sources.firstOrNull { it.name == channelSelection } ?: sources.first()
-        loadPlaylist(source.name, source.url)
+        browseSelection = preferences.getString("browse", "All") ?: "All"
+        setupBrowseFilter()
+        loadBrowseSelection()
     }
 
     private fun showAddPlaylist() {
@@ -212,24 +185,78 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDropdowns() {
-        channelSelection = preferences.getString("playlist", "Pakistan") ?: "Pakistan"
-        categorySelection = preferences.getString("category", "All categories") ?: "All categories"
-        countrySelection = preferences.getString("country", "All countries") ?: "All countries"
-        languageSelection = preferences.getString("language", "All languages") ?: "All languages"
-        setupSpinner(channelFilter, sources.map { it.name }, channelSelection) { selected ->
-            if (selected != channelSelection) {
-                channelSelection = selected
-                searchBox.setText("")
-                val source = sources.first { it.name == selected }
-                loadPlaylist(source.name, source.url)
+        channelSelection = preferences.getString("playlist", "All") ?: "All"
+    }
+
+
+    private val categoryGroups = listOf("Sports", "Religious", "News", "Movies", "Entertainment", "Kids", "Music", "Documentary", "Education", "Lifestyle", "Other")
+    private val browseOptions: List<String>
+        get() = listOf("All", "Working", "Not working", "Uncertain", "Favorites") +
+            sources.filter { it.name != "All" }.map { it.name } +
+            categoryGroups.filter { group -> sources.none { it.name.equals(group, true) } }
+
+    private fun categoryGroup(channel: Channel): String {
+        val text = (channel.category + " " + channel.name).lowercase()
+        return when {
+            listOf("sport", "cricket", "football", "soccer", "tennis", "nba", "wrestling", "racing").any { it in text } -> "Sports"
+            listOf("relig", "islam", "quran", "christ", "faith", "spiritual", "makkah", "madinah").any { it in text } -> "Religious"
+            listOf("news", "current affairs", "politic", "weather").any { it in text } -> "News"
+            listOf("movie", "cinema", "film").any { it in text } -> "Movies"
+            listOf("kids", "cartoon", "children", "junior").any { it in text } -> "Kids"
+            listOf("music", "song", "radio").any { it in text } -> "Music"
+            listOf("document", "history", "nature", "science").any { it in text } -> "Documentary"
+            listOf("educat", "learn", "school", "university").any { it in text } -> "Education"
+            listOf("lifestyle", "fashion", "travel", "food", "cook").any { it in text } -> "Lifestyle"
+            listOf("entertain", "general", "comedy", "series", "drama").any { it in text } -> "Entertainment"
+            else -> "Other"
+        }
+    }
+
+    private fun setupBrowseFilter() {
+        val options = browseOptions
+        updatingFilters = true
+        setupSpinner(channelFilter, options, browseSelection) { selected ->
+            if (selected != browseSelection) {
+                browseSelection = selected
+                preferences.edit().putString("browse", selected).apply()
+                loadBrowseSelection()
             }
         }
-        setupSpinner(availabilityFilter, listOf("All", "Working", "Offline", "Uncertain", "Not tested"), statusFilter) {
-            statusFilter = it
-            preferences.edit().putString("status_filter", it).apply()
-            applySearch()
+        updatingFilters = false
+    }
+
+    private fun loadBrowseSelection() {
+        val source = sources.firstOrNull { it.name == browseSelection }
+        if (source != null) {
+            channelSelection = source.name
+            loadPlaylist(source.name, source.url)
+        } else if (browseSelection == "Favorites") {
+            showFavorites()
+        } else {
+            val base = sources.firstOrNull { it.name == "All" } ?: sources.first()
+            if (currentPlaylist == "Favorites" || cachedPlaylistName != base.name) {
+                channelSelection = base.name
+                loadPlaylist(base.name, base.url)
+            } else {
+                allChannels = playlistCache
+                currentPlaylist = base.name
+                applySearch()
+            }
         }
-        updateMetadataFilters()
+    }
+
+    private fun showSettings(show: Boolean) {
+        showingSettings = show
+        findViewById<View>(R.id.contentArea).visibility = if (show) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.settingsPage).visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            findViewById<TextView>(R.id.settingsScanStatus).text =
+                if (scanExecutor != null) "Scan in progress" else if (scanCompleted) "Last scan saved" else "No completed scan"
+        }
+    }
+
+    override fun onBackPressed() {
+        if (showingSettings) showSettings(false) else super.onBackPressed()
     }
 
     private fun setupSpinner(spinner: Spinner, values: List<String>, selected: String, onSelected: (String) -> Unit) {
@@ -264,41 +291,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateMetadataFilters() {
-        val categories = listOf("All categories") + allChannels.map { it.category }
-            .filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
-        val countries = listOf("All countries") + allChannels.flatMap { it.country.split(';', ',') }
-            .map { it.trim() }.filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
-        if (categorySelection !in categories) categorySelection = "All categories"
-        if (countrySelection !in countries) countrySelection = "All countries"
-        val languages = listOf("All languages") + allChannels.flatMap { it.language.split(';', ',') }
-            .map { it.trim() }.filter { it.isNotBlank() }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
-        if (languageSelection !in languages) languageSelection = "All languages"
-        updatingFilters = true
-        setupSpinner(languageFilter, languages, languageSelection) {
-            languageSelection = it
-            preferences.edit().putString("language", it).apply()
-            applySearch()
-        }
-        setupSpinner(categoryFilter, categories, categorySelection) {
-            categorySelection = it
-            preferences.edit().putString("category", it).apply()
-            applySearch()
-        }
-        setupSpinner(countryFilter, countries, countrySelection) {
-            countrySelection = it
-            preferences.edit().putString("country", it).apply()
-            applySearch()
-        }
-        updatingFilters = false
-    }
+    private fun updateMetadataFilters() { /* Single browse selector owns filtering. */ }
+
 
     private fun cancelScan() {
         scanGeneration.incrementAndGet()
         scanExecutor?.shutdownNow()
         scanExecutor = null
-        scanButton.isEnabled = true
-        if (::scanButton.isInitialized) scanButton.text = "Scan"
+        if (::scanButton.isInitialized) scanButton.text = "Scan all channels"
     }
 
     private fun loadPlaylist(name: String, playlistUrl: String, forceRefresh: Boolean = false) {
@@ -373,24 +373,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun applySearch() {
         val query = searchBox.text.toString().trim()
+        val mode = browseSelection
         val filtered = allChannels.filter { channel ->
-            (query.isEmpty() || listOf(channel.name, channel.category, channel.country, channel.language, channel.id).any { it.contains(query, true) }) &&
-            (categorySelection == "All categories" || channel.category.equals(categorySelection, true)) &&
-            (countrySelection == "All countries" || channel.country.split(';', ',').any { it.trim().equals(countrySelection, true) }) &&
-            (languageSelection == "All languages" || channel.language.split(';', ',').any { it.trim().equals(languageSelection, true) }) &&
-            when (statusFilter) {
+            val matches = query.isBlank() || listOf(channel.name, channel.category, channel.country, channel.language, channel.id)
+                .any { it.contains(query, true) }
+            val modeMatches = when (mode) {
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
-                "Offline" -> scanResults[channel.url] == ChannelScanStatus.NOT_WORKING
+                "Not working" -> scanResults[channel.url] == ChannelScanStatus.NOT_WORKING
                 "Uncertain" -> scanResults[channel.url] == ChannelScanStatus.UNCERTAIN
-                "Not tested" -> !scanResults.containsKey(channel.url)
+                "Favorites" -> isFavorite(channel)
+                in categoryGroups -> categoryGroup(channel) == mode
                 else -> true
             }
+            matches && modeMatches &&
+                (!scanCompleted || mode in listOf("Not working", "Uncertain", "All", "Favorites") ||
+                 scanResults[channel.url] == ChannelScanStatus.WORKING)
         }
         showChannels(filtered)
-        status.text = "$currentPlaylist • ${filtered.size} / ${allChannels.size} channels"
+        status.text = "$mode • ${filtered.size} channels" +
+            if (scanCompleted && mode == "All") " • all scan statuses" else ""
     }
 
+
     private fun showChannels(channels: List<Channel>) {
+        val manager = channelList.layoutManager as? LinearLayoutManager
+        val position = manager?.findFirstVisibleItemPosition() ?: 0
+        val offset = manager?.findViewByPosition(position)?.top ?: 0
         visibleChannels = channels
         channelList.adapter = ChannelAdapter(
             channels,
@@ -402,7 +410,9 @@ class MainActivity : AppCompatActivity() {
                 playChannel(it)
             }
         )
+        if (channels.isNotEmpty()) manager?.scrollToPositionWithOffset(position.coerceAtMost(channels.lastIndex), offset)
     }
+
 
     private fun playChannel(channel: Channel) {
         currentChannel = channel
@@ -434,12 +444,19 @@ class MainActivity : AppCompatActivity() {
     private fun toggleFavorite(channel: Channel) {
         val saved = favorites.getStringSet("channels", emptySet())?.toMutableSet() ?: mutableSetOf()
         val existing = saved.firstOrNull { it.substringBefore('\t') == channel.url }
-        if (existing == null) saved.add(listOf(channel.url, channel.name, channel.category, channel.country, channel.id, channel.logo, channel.language).joinToString("\t")) else saved.remove(existing)
+        if (existing == null) saved.add(listOf(channel.url, channel.name, channel.category, channel.country, channel.id, channel.logo, channel.language).joinToString("\t"))
+        else saved.remove(existing)
         favorites.edit().putStringSet("channels", saved).apply()
         updateFavoriteButton()
-        if (currentPlaylist == "Favorites") allChannels = readFavorites()
-        applySearch()
+        if (browseSelection == "Favorites") {
+            allChannels = readFavorites()
+            applySearch()
+        } else {
+            // Update only the visible star; do not rebuild the list or jump to its first row.
+            channelList.adapter?.notifyItemRangeChanged(0, visibleChannels.size)
+        }
     }
+
 
     private fun updateFavoriteButton() {
         favoriteButton.text = if (currentChannel?.let { isFavorite(it) } == true) "★ Favorite" else "☆ Favorite"
@@ -452,27 +469,23 @@ class MainActivity : AppCompatActivity() {
         }.sortedBy { it.name.lowercase() }
 
     private fun scanCurrentList() {
-        if (allChannels.isEmpty()) return
         if (scanExecutor != null) {
             cancelScan()
-            scanButton.text = "Scan"
-            status.text = "Scan paused • results saved"
+            findViewById<TextView>(R.id.settingsScanStatus).text = "Scan stopped; previous completed results retained"
             return
         }
-        val scanList = visibleChannels.distinctBy { it.url }
-            .filter { !scanResults.containsKey(it.url) }
-        if (scanList.isEmpty()) {
-            status.text = "All selected channels already scanned"
+        if (allChannels.isEmpty()) {
+            findViewById<TextView>(R.id.settingsScanStatus).text = "Load a playlist before scanning"
             return
         }
+        val scanList = allChannels.distinctBy { it.url }
         val generation = scanGeneration.incrementAndGet()
-        findViewById<View>(R.id.scanSummary).visibility = View.VISIBLE
-        scanButton.text = "Stop"
-        status.text = "Scanning 0/${scanList.size} • saved automatically"
         val executor = Executors.newFixedThreadPool(4)
         scanExecutor = executor
-        val next = AtomicInteger(0)
+        scanButton.text = "Stop scan"
         val completed = AtomicInteger(0)
+        val next = AtomicInteger(0)
+        findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning 0 / ${scanList.size}"
         repeat(4) {
             executor.execute {
                 while (generation == scanGeneration.get() && !Thread.currentThread().isInterrupted) {
@@ -484,16 +497,21 @@ class MainActivity : AppCompatActivity() {
                     scanStore.save(channel.url, result)
                     scanResults[channel.url] = result
                     val done = completed.incrementAndGet()
-                    if (done % 50 == 0 || done == scanList.size) {
+                    if (done % 25 == 0 || done == scanList.size) {
                         runOnUiThread {
                             if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
-                            updateScanUi(done, scanList.size)
-                            channelList.adapter?.notifyDataSetChanged()
+                            findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning $done / ${scanList.size}"
                             if (done == scanList.size) {
+                                scanCompleted = true
+                                preferences.edit().putBoolean("scan_completed", true).apply()
                                 executor.shutdown()
                                 scanExecutor = null
-                                scanButton.text = "Scan"
-                                status.text = "Scan complete • ${scanList.size} new channels saved"
+                                scanButton.text = "Scan all channels again"
+                                browseSelection = "Working"
+                                setupBrowseFilter()
+                                loadBrowseSelection()
+                                findViewById<TextView>(R.id.settingsScanStatus).text = "Scan complete: showing working channels"
+                                showSettings(false)
                             }
                         }
                     }
@@ -501,6 +519,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
 
     private fun updateScanUi(done: Int, total: Int) {
         val working = scanResults.values.count { it == ChannelScanStatus.WORKING }
