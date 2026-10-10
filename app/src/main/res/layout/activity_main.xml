@@ -43,7 +43,7 @@
                     android:layout_height="52dp" android:layout_weight="1" android:layout_marginHorizontal="4dp" android:background="@drawable/player_control_button" android:textColor="#FFFFFF" android:textSize="22sp" android:textAllCaps="false" android:contentDescription="Change orientation" android:text="⛶"/>
                 <Button android:id="@+id/settingsButton" android:layout_width="0dp"
                     android:layout_height="52dp" android:layout_weight="1" android:layout_marginHorizontal="4dp" android:background="@drawable/player_control_button" android:textColor="#FFFFFF" android:textSize="22sp" android:textAllCaps="false" android:contentDescription="Open settings"
-                    android:text="⚙" android:contentDescription="Settings"/>
+                    android:text="⚙"/>
             </LinearLayout>
         </LinearLayout>
 
