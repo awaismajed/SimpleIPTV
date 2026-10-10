@@ -102,10 +102,6 @@
             <Button android:id="@+id/scanButton" android:layout_width="match_parent"
                 android:layout_height="52dp" android:text="Scan all channels"
                 android:textAllCaps="false"/>
-            <CheckBox android:id="@+id/onlyWorkingSetting"
-                android:layout_width="match_parent" android:layout_height="48dp"
-                android:text="Show only working channels after scanning"
-                android:textColor="#FFFFFF" android:checked="true"/>
             <TextView android:id="@+id/settingsScanStatus" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="No scan running"
                 android:textColor="#AFC4D7" android:textSize="13sp" android:paddingVertical="10dp"/>
