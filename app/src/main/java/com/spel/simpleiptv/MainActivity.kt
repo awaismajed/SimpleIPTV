@@ -249,9 +249,9 @@ class MainActivity : AppCompatActivity() {
         showingSettings = show
         findViewById<View>(R.id.contentArea).visibility = if (show) View.GONE else View.VISIBLE
         findViewById<View>(R.id.settingsPage).visibility = if (show) View.VISIBLE else View.GONE
-        if (show) {
+        if (show && scanExecutor == null && !scanLoading) {
             findViewById<TextView>(R.id.settingsScanStatus).text =
-                if (scanExecutor != null) "Scan in progress" else if (scanCompleted) "Last scan saved" else "No completed scan"
+                if (scanCompleted) "Last scan saved" else "No completed scan"
         }
     }
 
@@ -355,7 +355,6 @@ class MainActivity : AppCompatActivity() {
         cancelScan()
         currentPlaylist = "Favorites"
         playlistGeneration.incrementAndGet()
-        findViewById<View>(R.id.scanSummary).visibility = View.GONE
         searchBox.setText("")
         allChannels = readFavorites()
         updateMetadataFilters()
@@ -385,7 +384,7 @@ class MainActivity : AppCompatActivity() {
             }
             matches && modeMatches &&
                 (!scanCompleted || !preferences.getBoolean("only_working", true) ||
-                 mode == "All" || mode == "Favorites" || scanResults[channel.url] == ChannelScanStatus.WORKING)
+                 mode == "Favorites" || scanResults[channel.url] == ChannelScanStatus.WORKING)
         }
         showChannels(filtered)
         status.text = "$mode • ${filtered.size} channels"
