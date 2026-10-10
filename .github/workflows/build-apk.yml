@@ -30,10 +30,10 @@ jobs:
       - name: Version APK filename
         run: |
           mkdir -p release
-          cp app/build/outputs/apk/debug/app-debug.apk release/SimpleIPTV-v4.3.2-beta.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release/SimpleIPTV-v4.3.3-beta.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SimpleIPTV-v4.3.2-beta-APK
-          path: release/SimpleIPTV-v4.3.2-beta.apk
+          name: SimpleIPTV-v4.3.3-beta-APK
+          path: release/SimpleIPTV-v4.3.3-beta.apk
