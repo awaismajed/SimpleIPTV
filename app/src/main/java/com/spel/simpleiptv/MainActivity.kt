@@ -16,7 +16,6 @@ import android.view.WindowInsets
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
-import android.widget.CheckBox
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -115,15 +114,15 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
+        findViewById<Button>(R.id.stopButton).setOnClickListener {
+            player.stop()
+            player.clearMediaItems()
+            currentChannel = null
+            findViewById<TextView>(R.id.nowPlaying).text = "Playback stopped"
+            status.text = "Playback stopped"
+        }
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
         scanButton.setOnClickListener { scanCurrentList() }
-        findViewById<CheckBox>(R.id.onlyWorkingSetting).apply {
-            isChecked = preferences.getBoolean("only_working", true)
-            setOnCheckedChangeListener { _, checked ->
-                preferences.edit().putBoolean("only_working", checked).apply()
-                applySearch()
-            }
-        }
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
@@ -382,9 +381,11 @@ class MainActivity : AppCompatActivity() {
                 in categoryGroups -> categoryGroup(channel) == mode
                 else -> true
             }
-            matches && modeMatches &&
-                (!scanCompleted || !preferences.getBoolean("only_working", true) ||
-                 mode == "Favorites" || scanResults[channel.url] == ChannelScanStatus.WORKING)
+            matches && modeMatches && when (mode) {
+                "All" -> true
+                "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
+                else -> scanResults[channel.url] == ChannelScanStatus.WORKING
+            }
         }
         showChannels(filtered)
         status.text = "$mode • ${filtered.size} channels"
