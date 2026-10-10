@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
-        browseSelection = preferences.getString("browse", "All") ?: "All"
+        browseSelection = preferences.getString("browse", if (scanCompleted) "Working" else "All") ?: "All"
         setupBrowseFilter()
         loadBrowseSelection()
     }
@@ -505,6 +505,7 @@ class MainActivity : AppCompatActivity() {
                                 scanExecutor = null
                                 scanButton.text = "Scan all channels again"
                                 browseSelection = "Working"
+                                preferences.edit().putString("browse", "Working").apply()
                                 setupBrowseFilter()
                                 loadBrowseSelection()
                                 findViewById<TextView>(R.id.settingsScanStatus).text = "Scan complete: showing working channels"
