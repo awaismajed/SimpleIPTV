@@ -477,7 +477,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.settingsScanStatus).text = "Loading all playlist sources..."
         thread {
             val catalog = LinkedHashMap<String, Channel>()
-            val scanSources = listOfNotNull(sources.firstOrNull { it.name == "All" }) + customSources
+            val scanSources = sources.distinctBy { it.url }
             var failures = 0
             for (source in scanSources) {
                 if (generation != scanGeneration.get()) return@thread
