@@ -114,13 +114,6 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
-        findViewById<Button>(R.id.stopButton).setOnClickListener {
-            player.stop()
-            player.clearMediaItems()
-            currentChannel = null
-            findViewById<TextView>(R.id.nowPlaying).text = "Playback stopped"
-            status.text = "Playback stopped"
-        }
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
         scanButton.setOnClickListener { scanCurrentList() }
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
