@@ -16,6 +16,7 @@ import android.view.WindowInsets
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
+import android.widget.CheckBox
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -53,7 +54,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchBox: EditText
     private lateinit var channelList: RecyclerView
     private lateinit var channelFilter: Spinner
-    private lateinit var favoriteButton: Button
     private lateinit var scanButton: Button
 
     private var allChannels: List<Channel> = emptyList()
@@ -97,7 +97,6 @@ class MainActivity : AppCompatActivity() {
         searchBox = findViewById(R.id.searchBox)
         channelList = findViewById(R.id.channelList)
         channelFilter = findViewById(R.id.channelFilter)
-        favoriteButton = findViewById(R.id.favoriteButton)
         scanButton = findViewById(R.id.scanButton)
         channelList.layoutManager = LinearLayoutManager(this)
 
@@ -116,8 +115,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
-        favoriteButton.setOnClickListener { currentChannel?.let { toggleFavorite(it) } }
         scanButton.setOnClickListener { scanCurrentList() }
+        findViewById<CheckBox>(R.id.onlyWorkingSetting).apply {
+            isChecked = preferences.getBoolean("only_working", true)
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean("only_working", checked).apply()
+                applySearch()
+            }
+        }
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
@@ -186,9 +191,8 @@ class MainActivity : AppCompatActivity() {
 
     private val categoryGroups = listOf("Sports", "Religious", "News", "Movies", "Entertainment", "Kids", "Music", "Documentary", "Education", "Lifestyle", "Other")
     private val browseOptions: List<String>
-        get() = listOf("All", "Working", "Not working", "Uncertain", "Favorites") +
-            sources.filter { it.name != "All" }.map { it.name } +
-            categoryGroups.filter { group -> sources.none { it.name.equals(group, true) } }
+        get() = (listOf("All", "Working", "Favorites") +
+            sources.filter { it.name != "All" }.map { it.name } + categoryGroups).distinct()
 
     private fun categoryGroup(channel: Channel): String {
         val text = (channel.category + " " + channel.name).lowercase()
@@ -301,7 +305,6 @@ class MainActivity : AppCompatActivity() {
         currentPlaylist = name
         preferences.edit().putString("playlist", name).apply()
         val request = playlistGeneration.incrementAndGet()
-        findViewById<View>(R.id.scanSummary).visibility = View.GONE
         status.text = "Loading $name channels..."
         if (!forceRefresh && cachedPlaylistName == name && playlistCache.isNotEmpty()) {
             allChannels = playlistCache
@@ -374,19 +377,16 @@ class MainActivity : AppCompatActivity() {
                 .any { it.contains(query, true) }
             val modeMatches = when (mode) {
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
-                "Not working" -> scanResults[channel.url] == ChannelScanStatus.NOT_WORKING
-                "Uncertain" -> scanResults[channel.url] == ChannelScanStatus.UNCERTAIN
                 "Favorites" -> isFavorite(channel)
                 in categoryGroups -> categoryGroup(channel) == mode
                 else -> true
             }
             matches && modeMatches &&
-                (!scanCompleted || mode in listOf("Not working", "Uncertain", "All", "Favorites") ||
-                 scanResults[channel.url] == ChannelScanStatus.WORKING)
+                (!scanCompleted || !preferences.getBoolean("only_working", true) ||
+                 mode == "All" || mode == "Favorites" || scanResults[channel.url] == ChannelScanStatus.WORKING)
         }
         showChannels(filtered)
-        status.text = "$mode • ${filtered.size} channels" +
-            if (scanCompleted && mode == "All") " • all scan statuses" else ""
+        status.text = "$mode • ${filtered.size} channels"
     }
 
 
@@ -411,7 +411,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun playChannel(channel: Channel) {
         currentChannel = channel
-        updateFavoriteButton()
+        findViewById<TextView>(R.id.nowPlaying).text = "▶  ${channel.name}"
         status.text = "Loading: ${channel.name}"
         player.stop()
         player.clearMediaItems()
@@ -455,7 +455,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun updateFavoriteButton() {
-        favoriteButton.text = if (currentChannel?.let { isFavorite(it) } == true) "★ Favorite" else "☆ Favorite"
+
     }
 
     private fun readFavorites() = favorites.getStringSet("channels", emptySet()).orEmpty()
