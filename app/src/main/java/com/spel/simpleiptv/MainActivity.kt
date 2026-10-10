@@ -148,13 +148,8 @@ class MainActivity : AppCompatActivity() {
                     updated.add(name + "\t" + url)
                     preferences.edit().putStringSet("custom_sources", updated).apply()
                     channelSelection = name
-                    setupSpinner(channelFilter, sources.map { it.name }, name) { selected ->
-                        if (selected != channelSelection) {
-                            channelSelection = selected
-                            val source = sources.first { it.name == selected }
-                            loadPlaylist(source.name, source.url)
-                        }
-                    }
+                    browseSelection = name
+                    setupBrowseFilter()
                     loadPlaylist(name, url)
                 }
             }.show()
@@ -453,7 +448,8 @@ class MainActivity : AppCompatActivity() {
             applySearch()
         } else {
             // Update only the visible star; do not rebuild the list or jump to its first row.
-            channelList.adapter?.notifyItemRangeChanged(0, visibleChannels.size)
+            val index = visibleChannels.indexOfFirst { it.url == channel.url }
+            if (index >= 0) channelList.adapter?.notifyItemChanged(index)
         }
     }
 
@@ -501,6 +497,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
                             findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning $done / ${scanList.size}"
+                            if (browseSelection == "Working" && done != scanList.size) applySearch()
                             if (done == scanList.size) {
                                 scanCompleted = true
                                 preferences.edit().putBoolean("scan_completed", true).apply()
