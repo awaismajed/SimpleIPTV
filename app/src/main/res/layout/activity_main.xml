@@ -30,7 +30,7 @@
                 android:text="Select a channel to play" android:textColor="#FFFFFF"
                 android:textStyle="bold" android:textSize="13sp"
                 android:singleLine="true" android:ellipsize="marquee"
-                android:selected="true"/>
+                />
             <LinearLayout android:id="@+id/playbackControls"
                 android:layout_width="match_parent" android:layout_height="60dp"
                 android:orientation="horizontal" android:gravity="center"
