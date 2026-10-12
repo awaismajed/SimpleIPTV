@@ -1,7 +1,5 @@
 package com.spel.simpleiptv.vpn
 
-import java.util.Base64
-
 /**
  * Defensive parser for VPN Gate's public CSV API.
  * Discovery only: returned relay metadata does not establish or authenticate a tunnel.
@@ -48,8 +46,4 @@ object VpnGateDirectory {
             }.toList()
     }
 
-    fun decodedConfig(relay: VpnGateRelay): String? = runCatching {
-        val bytes = Base64.getDecoder().decode(relay.openVpnConfigBase64)
-        if (bytes.size > 75_000) null else bytes.toString(Charsets.UTF_8)
-    }.getOrNull()
 }
