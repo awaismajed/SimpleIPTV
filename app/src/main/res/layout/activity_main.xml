@@ -22,7 +22,7 @@
         <LinearLayout android:id="@+id/videoPane" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:orientation="vertical">
             <androidx.media3.ui.PlayerView android:id="@+id/playerView"
-                android:layout_width="match_parent" android:layout_height="190dp"
+                android:layout_width="match_parent" android:layout_height="250dp"
                 android:background="#000000" android:keepScreenOn="true" app:resize_mode="fit"/>
             <TextView android:id="@+id/nowPlaying" android:layout_width="match_parent"
                 android:layout_height="34dp" android:gravity="center_vertical"
@@ -57,6 +57,10 @@
                 <Spinner android:id="@+id/channelFilter" android:layout_width="match_parent"
                     android:layout_height="48dp" android:background="@drawable/filter_dropdown"
                     android:paddingHorizontal="12dp" android:spinnerMode="dropdown"/>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="42dp" android:orientation="horizontal">
+                    <Button android:id="@+id/countryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="Country: All" android:textAllCaps="false" android:textSize="12sp"/>
+                    <Button android:id="@+id/categoryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="Category: All" android:textAllCaps="false" android:textSize="12sp"/>
+                </LinearLayout>
                 <EditText android:id="@+id/searchBox" android:layout_width="match_parent"
                     android:layout_height="46dp" android:layout_marginTop="6dp"
                     android:hint="Search channels…" android:singleLine="true"
@@ -88,8 +92,9 @@
                 android:text="PLAYLIST MANAGEMENT" android:textColor="#AFC4D7" android:textSize="12sp"/>
             <Button android:id="@+id/addPlaylistButton" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="+ Add M3U playlist URL" android:textAllCaps="false"/>
+            <Button android:id="@+id/managePlaylistsButton" android:layout_width="match_parent" android:layout_height="50dp" android:text="Manage / rename / delete playlists" android:textAllCaps="false"/>
             <Button android:id="@+id/refreshButton" android:layout_width="match_parent"
-                android:layout_height="50dp" android:text="↻ Refresh current playlist" android:textAllCaps="false"/>
+                android:layout_height="50dp" android:text="↻ Sync latest online playlist" android:textAllCaps="false"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="CHANNEL AVAILABILITY" android:textColor="#AFC4D7"
                 android:textSize="12sp" android:paddingTop="18dp"/>
