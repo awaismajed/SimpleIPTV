@@ -52,14 +52,13 @@
             <LinearLayout android:id="@+id/filterPanel" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:orientation="vertical"
                 android:paddingHorizontal="10dp" android:paddingVertical="5dp">
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:text="BROWSE CHANNELS" android:textColor="#AFC4D7" android:textSize="11sp"/>
-                <Spinner android:id="@+id/channelFilter" android:layout_width="match_parent"
-                    android:layout_height="48dp" android:background="@drawable/filter_dropdown"
-                    android:paddingHorizontal="12dp" android:spinnerMode="dropdown"/>
-                <LinearLayout android:layout_width="match_parent" android:layout_height="42dp" android:orientation="horizontal">
-                    <Button android:id="@+id/countryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="Country: All" android:textAllCaps="false" android:textSize="12sp"/>
-                    <Button android:id="@+id/categoryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:text="Category: All" android:textAllCaps="false" android:textSize="12sp"/>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="BROWSE CHANNELS" android:textColor="#AFC4D7" android:textSize="11sp"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="COUNTRY" android:paddingStart="6dp" android:textColor="#AFC4D7" android:textSize="11sp"/>
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal">
+                    <Spinner android:id="@+id/channelFilter" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:background="@drawable/filter_dropdown" android:paddingHorizontal="6dp" android:spinnerMode="dropdown"/>
+                    <Button android:id="@+id/countryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:layout_marginStart="6dp" android:text="All countries ▾" android:textAllCaps="false" android:textSize="12sp"/>
                 </LinearLayout>
                 <EditText android:id="@+id/searchBox" android:layout_width="match_parent"
                     android:layout_height="46dp" android:layout_marginTop="6dp"
