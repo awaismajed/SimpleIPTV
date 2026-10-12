@@ -11,8 +11,8 @@ android {
         applicationId = "com.spel.simpleiptv"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21
-        versionName = "4.4.3-beta"
+        versionCode = 22
+        versionName = "4.5.0-beta"
     }
 
     compileOptions {
