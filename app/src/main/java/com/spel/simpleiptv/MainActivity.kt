@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private var updatingFilters = false
     private var browseSelection = "All"
     private var selectedCountry = ""
+    private var syncInProgress = false
     private var scanCompleted = false
     private var showingSettings = false
     private var playlistCache: List<Channel> = emptyList()
@@ -120,7 +121,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
-        findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
+        findViewById<Button>(R.id.refreshButton).setOnClickListener { syncOnlinePlaylist() }
         findViewById<Button>(R.id.managePlaylistsButton).setOnClickListener { managePlaylists() }
         findViewById<Button>(R.id.countryFilterButton).setOnClickListener { chooseCountry() }
         browseSelection = preferences.getString("browse", if (scanCompleted) "Working" else "All") ?: "All"
@@ -240,14 +241,86 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("Select country")
             .setItems(names.toTypedArray()) { _, index ->
                 selectedCountry = if (index == 0) "" else codes[index - 1]
-                findViewById<Button>(R.id.countryFilterButton).text = names[index]
-                applySearch()
+                findViewById<Button>(R.id.countryFilterButton).text = names[index] + " ▾"
+                browseSelection = "All"
+                preferences.edit().putString("browse", "All").apply()
+                setupBrowseFilter()
+                if (selectedCountry.isNotBlank()) {
+                    val url = "https://iptv-org.github.io/iptv/countries/" +
+                        selectedCountry.lowercase(java.util.Locale.ROOT) + ".m3u"
+                    loadPlaylist("Country:" + selectedCountry, url)
+                } else {
+                    loadBrowseSelection()
+                }
             }.show()
     }
 
-    private fun refreshCurrentPlaylist() {
-        val source = sources.firstOrNull { it.name == channelSelection } ?: return
-        loadPlaylist(source.name, source.url, forceRefresh = true)
+    private fun syncOnlinePlaylist() {
+        if (syncInProgress) return
+        syncInProgress = true
+        val syncLabel = findViewById<TextView>(R.id.settingsScanStatus)
+        val button = findViewById<Button>(R.id.refreshButton)
+        button.isEnabled = false
+        syncLabel.text = "Connecting to IPTV-org... 0%"
+        val previous = playlistCache.associateBy { it.url }
+        val syncRequest = playlistGeneration.incrementAndGet()
+        thread {
+            var error = ""
+            val channels = try {
+                val connection = URL("https://iptv-org.github.io/iptv/index.m3u").openConnection() as HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+                connection.setRequestProperty("User-Agent", "SimpleIPTV/4.4")
+                try {
+                    val totalBytes = connection.contentLengthLong
+                    val data = java.io.ByteArrayOutputStream()
+                    connection.inputStream.use { stream ->
+                        val buffer = ByteArray(32768)
+                        var bytes = 0L
+                        while (true) {
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            data.write(buffer, 0, count)
+                            bytes += count
+                            if (totalBytes > 0 && bytes % (256 * 1024) < count) {
+                                val percent = (bytes * 100 / totalBytes).coerceAtMost(99)
+                                runOnUiThread {
+                                    if (!isDestroyed) syncLabel.text = "Downloading latest channels... $percent%"
+                                }
+                            }
+                        }
+                    }
+                    runOnUiThread { if (!isDestroyed) syncLabel.text = "Comparing channel lists..." }
+                    M3uParser.parse(data.toString("UTF-8"))
+                } finally { connection.disconnect() }
+            } catch (e: Exception) {
+                error = e.message ?: e.javaClass.simpleName
+                emptyList()
+            }
+            runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                syncInProgress = false
+                button.isEnabled = true
+                if (channels.isEmpty()) {
+                    syncLabel.text = "Sync failed: " + error.ifBlank { "No channels returned" }
+                    return@runOnUiThread
+                }
+                val latest = channels.associateBy { it.url }
+                val added = latest.keys.count { it !in previous }
+                val removed = previous.keys.count { it !in latest }
+                val unchanged = latest.size - added
+                cachedPlaylistName = "All"
+                playlistCache = channels
+                preferences.edit().putLong("last_sync", System.currentTimeMillis()).apply()
+                syncLabel.text = "Sync complete • Total: ${channels.size} • New: $added • Removed: $removed • Existing: $unchanged"
+                if (selectedCountry.isBlank() && browseSelection in listOf("All", "Working")) {
+                    allChannels = channels
+                    currentPlaylist = "All"
+                    applySearch()
+                }
+                // The sync does not interrupt playback, modify favorites, or overwrite saved scan results.
+            }
+        }
     }
 
     private fun applySafeInsets() {
@@ -302,6 +375,8 @@ class MainActivity : AppCompatActivity() {
         setupSpinner(channelFilter, options, browseSelection) { selected ->
             if (selected != browseSelection) {
                 browseSelection = selected
+                selectedCountry = ""
+                findViewById<Button>(R.id.countryFilterButton).text = "All countries ▾"
                 preferences.edit().putString("browse", selected).apply()
                 loadBrowseSelection()
             }
@@ -310,6 +385,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadBrowseSelection() {
+        selectedCountry = ""
+        findViewById<Button>(R.id.countryFilterButton).text = "All countries ▾"
         val source = sources.firstOrNull { it.name == browseSelection }
         if (source != null) {
             channelSelection = source.name
@@ -333,7 +410,7 @@ class MainActivity : AppCompatActivity() {
         showingSettings = show
         findViewById<View>(R.id.contentArea).visibility = if (show) View.GONE else View.VISIBLE
         findViewById<View>(R.id.settingsPage).visibility = if (show) View.VISIBLE else View.GONE
-        if (show && scanExecutor == null && !scanLoading) {
+        if (show && !syncInProgress && scanExecutor == null && !scanLoading) {
             findViewById<TextView>(R.id.settingsScanStatus).text =
                 if (scanCompleted) "Last scan saved" else "No completed scan"
         }
@@ -465,14 +542,11 @@ class MainActivity : AppCompatActivity() {
                 "Favorites" -> isFavorite(channel)
                 else -> true
             }
-            matches && modeMatches && (selectedCountry.isBlank() || channel.country.split(";").any { it.trim().equals(selectedCountry, true) }) && when (mode) {
-                "All" -> true
-                "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
-                else -> scanResults[channel.url] == ChannelScanStatus.WORKING
-            }
+            matches && modeMatches
+
         }
         showChannels(filtered)
-        status.text = "$mode • ${filtered.size} channels"
+        status.text = (if (selectedCountry.isNotBlank()) "Country: " + java.util.Locale("", selectedCountry).displayCountry else mode) + " • ${filtered.size} channels"
     }
 
 
