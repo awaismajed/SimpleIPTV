@@ -10,5 +10,5 @@ object PlaylistConfig {
         PlaylistSource("English", "https://iptv-org.github.io/iptv/languages/eng.m3u"),
         PlaylistSource("News", "https://iptv-org.github.io/iptv/categories/news.m3u")
     )
-    const val M3U_URL = "https://iptv-org.github.io/iptv/countries/pk.m3u"
+    const val M3U_URL = "https://iptv-org.github.io/iptv/index.m3u"
 }
