@@ -26,6 +26,10 @@ object WireGuardConfigValidator {
             val key = line.substring(0, separator).trim()
             val value = line.substring(separator + 1).trim()
             if (key.isEmpty() || value.isEmpty()) return Result(false, "Missing configuration value")
+            val allowedKeys = if (current == "Interface")
+                setOf("PrivateKey", "Address", "DNS", "MTU", "ListenPort")
+            else setOf("PublicKey", "PresharedKey", "AllowedIPs", "Endpoint", "PersistentKeepalive")
+            if (key !in allowedKeys) return Result(false, "Unsupported configuration key")
             if (sections.getValue(current).put(key, value) != null) return Result(false, "Duplicate key")
         }
         val iface = sections["Interface"] ?: return Result(false, "Missing Interface")
