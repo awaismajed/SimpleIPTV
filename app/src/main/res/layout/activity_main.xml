@@ -102,6 +102,18 @@
             <Button android:id="@+id/refreshButton" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="↻ Sync latest online playlist" android:textAllCaps="false"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="BACKUP AND RESTORE" android:textColor="#AFC4D7"
+                android:textSize="12sp" android:paddingTop="18dp"/>
+            <Button android:id="@+id/exportBackupButton" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Export channel database backup"
+                android:textAllCaps="false"/>
+            <Button android:id="@+id/importBackupButton" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="Restore channel database backup"
+                android:textAllCaps="false"/>
+            <TextView android:id="@+id/backupStatus" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="Backup includes saved channels, scan results, favorites and custom playlists."
+                android:textColor="#AFC4D7" android:textSize="12sp" android:paddingVertical="8dp"/>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="CHANNEL AVAILABILITY" android:textColor="#AFC4D7"
                 android:textSize="12sp" android:paddingTop="18dp"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
