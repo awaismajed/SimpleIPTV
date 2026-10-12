@@ -20,7 +20,9 @@ object M3uParser {
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
                     name = line.substringAfterLast(',').trim().ifBlank { attribute(line, "tvg-name").ifBlank { "Channel" } }
                     category = attribute(line, "group-title")
-                    country = attribute(line, "tvg-country")
+                    country = attribute(line, "tvg-country").ifBlank {
+                        Regex("""\\.([a-zA-Z]{2})(?:@[^"]*)?$""").find(attribute(line, "tvg-id"))?.groupValues?.get(1)?.uppercase().orEmpty()
+                    }
                     id = attribute(line, "tvg-id")
                     logo = attribute(line, "tvg-logo")
                     language = attribute(line, "tvg-language")

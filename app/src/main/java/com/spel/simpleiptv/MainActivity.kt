@@ -68,7 +68,6 @@ class MainActivity : AppCompatActivity() {
     private var updatingFilters = false
     private var browseSelection = "All"
     private var selectedCountry = ""
-    private var selectedCategory = ""
     private var scanCompleted = false
     private var showingSettings = false
     private var playlistCache: List<Channel> = emptyList()
@@ -123,8 +122,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
         findViewById<Button>(R.id.managePlaylistsButton).setOnClickListener { managePlaylists() }
-        findViewById<Button>(R.id.countryFilterButton).setOnClickListener { chooseFilter(true) }
-        findViewById<Button>(R.id.categoryFilterButton).setOnClickListener { chooseFilter(false) }
+        findViewById<Button>(R.id.countryFilterButton).setOnClickListener { chooseCountry() }
         browseSelection = preferences.getString("browse", if (scanCompleted) "Working" else "All") ?: "All"
         setupBrowseFilter()
         loadBrowseSelection()
@@ -234,21 +232,15 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun chooseFilter(country: Boolean) {
-        val values = (if (country) allChannels.map { it.country } else allChannels.map { it.category })
-            .filter { it.isNotBlank() }.distinct().sorted()
-        val options = listOf(if (country) "All countries" else "All categories") + values
-        AlertDialog.Builder(this).setTitle(if (country) "Select country" else "Select category")
-            .setItems(options.toTypedArray()) { _, index ->
-                if (country) {
-                    selectedCountry = if (index == 0) "" else options[index]
-                    findViewById<Button>(R.id.countryFilterButton).text =
-                        "Country: " + selectedCountry.ifBlank { "All" }
-                } else {
-                    selectedCategory = if (index == 0) "" else options[index]
-                    findViewById<Button>(R.id.categoryFilterButton).text =
-                        "Category: " + selectedCategory.ifBlank { "All" }
-                }
+    private fun chooseCountry() {
+        val codes = java.util.Locale.getISOCountries().toList().sortedBy {
+            java.util.Locale("", it).displayCountry
+        }
+        val names = listOf("All countries") + codes.map { java.util.Locale("", it).displayCountry }
+        AlertDialog.Builder(this).setTitle("Select country")
+            .setItems(names.toTypedArray()) { _, index ->
+                selectedCountry = if (index == 0) "" else codes[index - 1]
+                findViewById<Button>(R.id.countryFilterButton).text = names[index]
                 applySearch()
             }.show()
     }
@@ -473,8 +465,7 @@ class MainActivity : AppCompatActivity() {
                 "Favorites" -> isFavorite(channel)
                 else -> true
             }
-            matches && modeMatches && (selectedCountry.isBlank() || channel.country.equals(selectedCountry, true)) &&
-                (selectedCategory.isBlank() || channel.category.equals(selectedCategory, true)) && when (mode) {
+            matches && modeMatches && (selectedCountry.isBlank() || channel.country.split(";").any { it.trim().equals(selectedCountry, true) }) && when (mode) {
                 "All" -> true
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
                 else -> scanResults[channel.url] == ChannelScanStatus.WORKING
