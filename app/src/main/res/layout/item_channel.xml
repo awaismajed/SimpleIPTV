@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="66dp"
+    android:layout_width="match_parent" android:layout_height="54dp"
     android:orientation="horizontal" android:gravity="center_vertical"
     android:paddingHorizontal="12dp"
     android:background="?android:attr/selectableItemBackground">
 
-    <FrameLayout android:layout_width="44dp" android:layout_height="44dp"
+    <FrameLayout android:layout_width="38dp" android:layout_height="38dp"
         android:background="#1E4770">
         <TextView android:id="@+id/channelBadge" android:layout_width="match_parent"
             android:layout_height="match_parent" android:gravity="center"
@@ -28,6 +28,7 @@
     </LinearLayout>
 
 
+    <TextView android:id="@+id/channelStatus" android:layout_width="24dp" android:layout_height="match_parent" android:gravity="center" android:text="●" android:textColor="#8899AA" android:textSize="16sp"/>
     <TextView android:id="@+id/channelStar" android:layout_width="44dp"
         android:layout_height="match_parent" android:gravity="center"
         android:text="☆" android:textColor="#FFD43B" android:textSize="28sp" />
