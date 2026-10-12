@@ -362,11 +362,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun chooseCountry() {
-        val codes = java.util.Locale.getISOCountries().toList().sortedBy {
-            java.util.Locale("", it).displayCountry
+        if (masterChannels.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("Country filter unavailable")
+                .setMessage("The IPTV-org master playlist has not loaded yet. Open Settings and sync the master playlist, then try again.")
+                .setPositiveButton("OK", null).show()
+            return
         }
-        val names = listOf("All countries") + codes.map { java.util.Locale("", it).displayCountry }
-        AlertDialog.Builder(this).setTitle("Select country")
+        val codes = CountryCatalog.codes(masterChannels)
+        val names = listOf("All countries") + codes.map { CountryCatalog.name(it) }
+        AlertDialog.Builder(this).setTitle("Country • ${codes.size} available")
             .setItems(names.toTypedArray()) { _, index ->
                 selectedCountry = if (index == 0) "" else codes[index - 1]
                 findViewById<Button>(R.id.countryFilterButton).text = names[index] + " ▾"
@@ -374,13 +378,9 @@ class MainActivity : AppCompatActivity() {
                 preferences.edit().putString("browse", "All").apply()
                 setupBrowseFilter()
                 channelSelection = "All"
-                if (masterChannels.isNotEmpty()) {
-                    allChannels = masterChannels
-                    currentPlaylist = "All"
-                    applySearch()
-                } else {
-                    loadPlaylist("All", masterUrl)
-                }
+                allChannels = masterChannels
+                currentPlaylist = "All"
+                applySearch()
             }.show()
     }
 
@@ -682,8 +682,7 @@ class MainActivity : AppCompatActivity() {
                 "Favorites" -> isFavorite(channel)
                 else -> true
             }
-            matches && modeMatches && (selectedCountry.isBlank() ||
-                channel.country.split(';', ',').any { it.trim().equals(selectedCountry, true) })
+            matches && modeMatches && CountryCatalog.matches(channel, selectedCountry)
 
         }
         showChannels(filtered)
