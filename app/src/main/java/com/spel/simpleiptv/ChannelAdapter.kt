@@ -49,7 +49,12 @@ class ChannelAdapter(
             holder.logo.setImageDrawable(null)
             holder.logo.visibility = View.GONE
         }
-        holder.subtitle.text = listOf(channel.category, channel.country, channel.language).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "Live channel" }
+        val countryName = channel.country.split(';', ',').map { code ->
+            val value = code.trim()
+            if (value.length == 2) java.util.Locale("", value).displayCountry.takeIf { it.isNotBlank() } ?: value else value
+        }.filter { it.isNotBlank() }.joinToString(", ")
+        holder.subtitle.text = listOf(countryName, channel.category, channel.language)
+            .filter { it.isNotBlank() }.distinct().joinToString(" • ").ifBlank { "Live channel" }
         val state = scanStatus(channel)
         holder.indicator.text = when (state) {
             ChannelScanStatus.WORKING -> "●"
