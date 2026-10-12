@@ -118,6 +118,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
         findViewById<Button>(R.id.fullscreenButton).setOnClickListener { toggleFullscreen() }
         scanButton.setOnClickListener { scanCurrentList() }
+        updateSavedScanSummary()
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
@@ -460,7 +461,7 @@ class MainActivity : AppCompatActivity() {
         scanLoading = false
         scanExecutor?.shutdownNow()
         scanExecutor = null
-        if (::scanButton.isInitialized) scanButton.text = "Scan all channels"
+        if (::scanButton.isInitialized) scanButton.text = "Resume scan"
     }
 
     private fun loadPlaylist(name: String, playlistUrl: String, forceRefresh: Boolean = false) {
@@ -624,6 +625,16 @@ class MainActivity : AppCompatActivity() {
             if (p.size >= 2) Channel(p[1], p[0], p.getOrElse(2) { "" }, p.getOrElse(3) { "" }, p.getOrElse(4) { "" }, p.getOrElse(5) { "" }, p.getOrElse(6) { "" }) else null
         }.sortedBy { it.name.lowercase() }
 
+    private fun updateSavedScanSummary() {
+        if (!::scanButton.isInitialized || scanLoading) return
+        val saved = scanResults.size
+        val working = scanResults.values.count { it == ChannelScanStatus.WORKING }
+        scanButton.text = if (saved > 0) "Resume scan (skip saved)" else "Scan all channels"
+        findViewById<TextView>(R.id.settingsScanStatus).text =
+            if (saved > 0) "Saved on device: $saved checked • $working working. Resume skips these URLs."
+            else "No saved scan results yet"
+    }
+
     private fun scanCurrentList() {
         if (scanExecutor != null || scanLoading) {
             cancelScan()
@@ -655,6 +666,10 @@ class MainActivity : AppCompatActivity() {
             }
             if (generation != scanGeneration.get()) return@thread
             val scanList = catalog.values.toList()
+            val savedStatuses = scanStore.load(Long.MAX_VALUE)
+            scanResults.putAll(savedStatuses)
+            val pending = scanList.filter { it.url !in savedStatuses }
+            val alreadyDone = scanList.size - pending.size
             val failedSources = failures
             runOnUiThread {
                 if (generation != scanGeneration.get() || isDestroyed) return@runOnUiThread
@@ -664,43 +679,49 @@ class MainActivity : AppCompatActivity() {
                     findViewById<TextView>(R.id.settingsScanStatus).text = "Unable to load channels. Check internet and retry."
                     return@runOnUiThread
                 }
+                if (pending.isEmpty()) {
+                    scanCompleted = true
+                    preferences.edit().putBoolean("scan_completed", true).apply()
+                    findViewById<TextView>(R.id.settingsScanStatus).text =
+                        "All ${scanList.size} channels already checked • $failedSources sources unavailable"
+                    scanButton.text = "Scan complete"
+                    return@runOnUiThread
+                }
                 val executor = Executors.newFixedThreadPool(4)
                 scanExecutor = executor
                 val next = AtomicInteger()
                 val completed = AtomicInteger()
-                val working = AtomicInteger()
-                findViewById<TextView>(R.id.settingsScanStatus).text = "Scanning 0 / ${scanList.size}"
+                val working = AtomicInteger(scanList.count { savedStatuses[it.url] == ChannelScanStatus.WORKING })
+                findViewById<TextView>(R.id.settingsScanStatus).text =
+                    "Resuming: $alreadyDone / ${scanList.size} saved • ${pending.size} remaining"
                 repeat(4) {
                     executor.execute {
                         while (generation == scanGeneration.get() && !Thread.currentThread().isInterrupted) {
                             val index = next.getAndIncrement()
-                            if (index >= scanList.size) break
-                            val channel = scanList[index]
+                            if (index >= pending.size) break
+                            val channel = pending[index]
                             val result = testStream(channel.url)
                             if (generation != scanGeneration.get()) break
                             scanStore.save(channel.url, result)
                             scanResults[channel.url] = result
                             if (result == ChannelScanStatus.WORKING) working.incrementAndGet()
                             val done = completed.incrementAndGet()
-                            if (done % 50 == 0 || done == scanList.size) {
+                            if (done % 10 == 0 || done == pending.size) {
                                 runOnUiThread {
                                     if (generation != scanGeneration.get() || isDestroyed) return@runOnUiThread
                                     findViewById<TextView>(R.id.settingsScanStatus).text =
-                                        "Scanned $done / ${scanList.size} • ${working.get()} reachable"
+                                        "Saved ${alreadyDone + done} / ${scanList.size} • ${working.get()} working • ${pending.size - done} remaining"
                                     if (browseSelection == "Working" && !showingSettings) applySearch()
-                                    if (done == scanList.size) {
+                                    if (done == pending.size) {
                                         executor.shutdown()
                                         scanExecutor = null
                                         scanCompleted = true
                                         preferences.edit().putBoolean("scan_completed", true)
                                             .putString("browse", "Working").apply()
-                                        browseSelection = "Working"
-                                        scanButton.text = "Scan all channels again"
-                                        setupBrowseFilter()
-                                        loadBrowseSelection()
+                                        scanButton.text = "Scan complete"
                                         findViewById<TextView>(R.id.settingsScanStatus).text =
                                             "Finished: ${working.get()} reachable of ${scanList.size}; $failedSources sources unavailable"
-                                        showSettings(false)
+
                                     }
                                 }
                             }
