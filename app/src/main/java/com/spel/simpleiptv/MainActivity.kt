@@ -480,7 +480,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadPlaylist(name: String, playlistUrl: String, forceRefresh: Boolean = false) {
-        cancelScan()
         currentPlaylist = name
         preferences.edit().putString("playlist", name).apply()
         val request = playlistGeneration.incrementAndGet()
@@ -535,7 +534,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFavorites() {
-        cancelScan()
         currentPlaylist = "Favorites"
         playlistGeneration.incrementAndGet()
         searchBox.setText("")
