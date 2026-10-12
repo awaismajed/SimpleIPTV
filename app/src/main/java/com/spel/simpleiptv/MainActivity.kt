@@ -69,6 +69,12 @@ class MainActivity : AppCompatActivity() {
     private var browseSelection = "All"
     private var selectedCountry = ""
     private var syncInProgress = false
+    private val exportBackupLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) writeBackup(uri)
+    }
+    private val importBackupLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) confirmRestore(uri)
+    }
     private var scanCompleted = false
     private var showingSettings = false
     private var playlistCache: List<Channel> = emptyList()
@@ -127,6 +133,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { syncOnlinePlaylist() }
+        findViewById<Button>(R.id.exportBackupButton).setOnClickListener { exportBackupLauncher.launch("SimpleIPTV-backup.zip") }
+        findViewById<Button>(R.id.importBackupButton).setOnClickListener { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
         findViewById<Button>(R.id.managePlaylistsButton).setOnClickListener { managePlaylists() }
         findViewById<Button>(R.id.countryFilterButton).setOnClickListener { chooseCountry() }
         browseSelection = preferences.getString("browse", if (scanCompleted) "Working" else "All") ?: "All"
@@ -134,6 +142,118 @@ class MainActivity : AppCompatActivity() {
         loadBrowseSelection()
         if (System.currentTimeMillis() - preferences.getLong("last_sync", 0L) > 24L * 60 * 60 * 1000) {
             syncOnlinePlaylist()
+        }
+    }
+
+    private fun writeBackup(uri: Uri) {
+        val backupLabel = findViewById<TextView>(R.id.backupStatus)
+        backupLabel.text = "Exporting backup..."
+        thread {
+            val result = runCatching {
+                val scanSnapshot = scanStore.exportRows()
+                val metadata = org.json.JSONObject().apply {
+                    put("format", "simpleiptv-backup")
+                    put("version", 1)
+                    put("exportedAt", System.currentTimeMillis())
+                    put("settings", org.json.JSONObject().apply {
+                        put("lastSync", preferences.getLong("last_sync", 0L))
+                        put("browse", browseSelection)
+                    })
+                    put("customSources", org.json.JSONArray(customSources.map {
+                        org.json.JSONObject().put("name", it.name).put("url", it.url)
+                    }))
+                    put("favorites", org.json.JSONArray(favorites.getStringSet("channels", emptySet()).orEmpty().toList()))
+                    put("scans", org.json.JSONArray(scanSnapshot.map {
+                        org.json.JSONObject().put("url", it.first).put("status", it.second.first.name)
+                            .put("checkedAt", it.second.second)
+                    }))
+                }
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    java.util.zip.ZipOutputStream(output).use { zip ->
+                        zip.putNextEntry(java.util.zip.ZipEntry("metadata.json"))
+                        zip.write(metadata.toString().toByteArray(Charsets.UTF_8))
+                        zip.closeEntry()
+                        zip.putNextEntry(java.util.zip.ZipEntry("master.m3u"))
+                        if (masterFile.exists()) masterFile.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                } ?: error("Cannot open destination")
+                "Backup exported: ${scanSnapshot.size} scan results, ${customSources.size} playlists."
+            }
+            runOnUiThread {
+                if (!isDestroyed) backupLabel.text = result.getOrElse { "Export failed: ${it.message}" }
+            }
+        }
+    }
+
+    private fun confirmRestore(uri: Uri) {
+        AlertDialog.Builder(this).setTitle("Restore channel database?")
+            .setMessage("This replaces your saved favorites, custom playlists, scan results and master channel cache. Export a backup first if you need the current data.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Restore") { _, _ -> restoreBackup(uri) }.show()
+    }
+
+    private fun restoreBackup(uri: Uri) {
+        val label = findViewById<TextView>(R.id.backupStatus)
+        label.text = "Validating backup..."
+        thread {
+            val result = runCatching {
+                var metadataBytes: ByteArray? = null
+                var masterBytes: ByteArray? = null
+                contentResolver.openInputStream(uri)?.use { input ->
+                    java.util.zip.ZipInputStream(input).use { zip ->
+                        while (true) {
+                            val entry = zip.nextEntry ?: break
+                            if (entry.name == "metadata.json") {
+                                metadataBytes = zip.readBytes().also { require(it.size < 100 * 1024 * 1024) }
+                            } else if (entry.name == "master.m3u") {
+                                masterBytes = zip.readBytes().also { require(it.size < 100 * 1024 * 1024) }
+                            }
+                            zip.closeEntry()
+                        }
+                    }
+                } ?: error("Cannot read selected file")
+                val metadata = org.json.JSONObject(String(metadataBytes ?: error("Missing metadata.json"), Charsets.UTF_8))
+                require(metadata.getString("format") == "simpleiptv-backup" && metadata.getInt("version") == 1) {
+                    "Unsupported backup format"
+                }
+                val sourcesJson = metadata.getJSONArray("customSources")
+                val restoredSources = (0 until sourcesJson.length()).map { sourcesJson.getJSONObject(it) }.map {
+                    PlaylistSource(it.getString("name"), it.getString("url"))
+                }
+                val favoritesJson = metadata.getJSONArray("favorites")
+                val restoredFavorites = (0 until favoritesJson.length()).map { favoritesJson.getString(it) }.toSet()
+                val scansJson = metadata.getJSONArray("scans")
+                val restoredScans = (0 until scansJson.length()).map { scansJson.getJSONObject(it) }.map {
+                    Triple(it.getString("url"), ChannelScanStatus.valueOf(it.getString("status")), it.getLong("checkedAt"))
+                }
+                val masterText = String(masterBytes ?: error("Missing master.m3u"), Charsets.UTF_8)
+                val restoredMaster = if (masterText.isBlank()) emptyList() else M3uParser.parse(masterText)
+                require(masterText.isBlank() || restoredMaster.isNotEmpty()) { "Invalid master playlist" }
+                scanStore.replaceRows(restoredScans)
+                saveCustomSources(restoredSources)
+                favorites.edit().putStringSet("channels", restoredFavorites).commit()
+                preferences.edit().putLong("last_sync", metadata.getJSONObject("settings").optLong("lastSync", 0L)).commit()
+                masterFile.writeText(masterText)
+                Triple(restoredMaster, restoredScans, restoredSources)
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                result.onSuccess { (channels, scans, sources) ->
+                    cancelScan()
+                    masterChannels = channels
+                    playlistCache = channels
+                    cachedPlaylistName = "All"
+                    scanResults.clear()
+                    scans.forEach { scanResults[it.first] = it.second }
+                    browseSelection = "All"
+                    selectedCountry = ""
+                    setupBrowseFilter()
+                    loadBrowseSelection()
+                    updateSavedScanSummary()
+                    label.text = "Restored: ${channels.size} channels, ${scans.size} scans, ${sources.size} playlists."
+                }.onFailure { label.text = "Restore failed: ${it.message}" }
+            }
         }
     }
 

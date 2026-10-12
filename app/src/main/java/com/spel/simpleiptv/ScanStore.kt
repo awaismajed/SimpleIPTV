@@ -30,5 +30,35 @@ class ScanStore(context: Context) : SQLiteOpenHelper(context, "simpleiptv.db", n
         }
         return results
     }
+    @Synchronized fun exportRows(): List<Pair<String, Pair<ChannelScanStatus, Long>>> {
+        val rows = ArrayList<Pair<String, Pair<ChannelScanStatus, Long>>>()
+        readableDatabase.rawQuery("SELECT url,status,checked_at FROM scans", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val status = runCatching { ChannelScanStatus.valueOf(cursor.getString(1)) }.getOrNull()
+                if (status != null) rows.add(cursor.getString(0) to (status to cursor.getLong(2)))
+            }
+        }
+        return rows
+    }
+
+    @Synchronized fun replaceRows(rows: List<Triple<String, ChannelScanStatus, Long>>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("scans", null, null)
+            rows.forEach { (url, status, checkedAt) ->
+                val values = android.content.ContentValues().apply {
+                    put("url", url)
+                    put("status", status.name)
+                    put("checked_at", checkedAt)
+                }
+                db.insertWithOnConflict("scans", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     @Synchronized fun clear() { writableDatabase.delete("scans", null, null) }
 }
