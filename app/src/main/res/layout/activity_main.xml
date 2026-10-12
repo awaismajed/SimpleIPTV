@@ -58,7 +58,7 @@
                 </LinearLayout>
                 <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal">
                     <Spinner android:id="@+id/channelFilter" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:background="@drawable/filter_dropdown" android:paddingHorizontal="6dp" android:spinnerMode="dropdown"/>
-                    <Button android:id="@+id/countryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:layout_marginStart="6dp" android:text="All countries ▾" android:textAllCaps="false" android:textSize="12sp"/>
+                    <Button android:id="@+id/countryFilterButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:layout_marginStart="6dp" android:text="All countries ▾" android:textAllCaps="false" android:textSize="12sp" android:textColor="#FFFFFF" android:background="@drawable/filter_dropdown" android:paddingHorizontal="8dp"/>
                 </LinearLayout>
                 <EditText android:id="@+id/searchBox" android:layout_width="match_parent"
                     android:layout_height="46dp" android:layout_marginTop="6dp"
@@ -92,13 +92,20 @@
             <Button android:id="@+id/addPlaylistButton" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="+ Add M3U playlist URL" android:textAllCaps="false"/>
             <Button android:id="@+id/managePlaylistsButton" android:layout_width="match_parent" android:layout_height="50dp" android:text="Manage / rename / delete playlists" android:textAllCaps="false"/>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="BASE PLAYLIST · IPTV-ORG" android:textColor="#AFC4D7"
+                android:textSize="12sp" android:paddingTop="16dp"/>
+            <TextView android:id="@+id/basePlaylistUrl" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="https://iptv-org.github.io/iptv/index.m3u"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:paddingVertical="10dp"
+                android:textIsSelectable="true"/>
             <Button android:id="@+id/refreshButton" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="↻ Sync latest online playlist" android:textAllCaps="false"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="CHANNEL AVAILABILITY" android:textColor="#AFC4D7"
                 android:textSize="12sp" android:paddingTop="18dp"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="Scan all configured playlists, including custom sources. Every unique channel URL is checked again. Results are saved, and working channels appear in the browser."
+                android:text="Scan all configured playlists, including custom sources. Previously checked channel URLs are skipped when resuming. Results are saved after each check and remain available after closing the app. Use Scan again to continue."
                 android:textColor="#DDE7F0" android:textSize="14sp" android:paddingVertical="8dp"/>
             <Button android:id="@+id/scanButton" android:layout_width="match_parent"
                 android:layout_height="52dp" android:text="Scan all channels"
