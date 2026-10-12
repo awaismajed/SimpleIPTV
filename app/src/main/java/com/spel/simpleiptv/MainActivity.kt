@@ -72,6 +72,9 @@ class MainActivity : AppCompatActivity() {
     private var scanCompleted = false
     private var showingSettings = false
     private var playlistCache: List<Channel> = emptyList()
+    private var masterChannels: List<Channel> = emptyList()
+    private val masterUrl = PlaylistConfig.M3U_URL
+    private val masterFile by lazy { File(filesDir, "iptv-master.m3u") }
     private var cachedPlaylistName = ""
     private val customSources: List<PlaylistSource>
         get() = preferences.getStringSet("custom_sources", emptySet()).orEmpty().mapNotNull {
@@ -92,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         scanStore = ScanStore(applicationContext)
         scanResults.putAll(scanStore.load(Long.MAX_VALUE))
         scanCompleted = preferences.getBoolean("scan_completed", false)
+        masterChannels = runCatching { if (masterFile.exists()) M3uParser.parse(masterFile.readText()) else emptyList() }.getOrDefault(emptyList())
         applySafeInsets()
 
         playerView = findViewById(R.id.playerView)
@@ -128,6 +132,9 @@ class MainActivity : AppCompatActivity() {
         browseSelection = preferences.getString("browse", if (scanCompleted) "Working" else "All") ?: "All"
         setupBrowseFilter()
         loadBrowseSelection()
+        if (System.currentTimeMillis() - preferences.getLong("last_sync", 0L) > 24L * 60 * 60 * 1000) {
+            syncOnlinePlaylist()
+        }
     }
 
     private fun showAddPlaylist() {
@@ -246,12 +253,13 @@ class MainActivity : AppCompatActivity() {
                 browseSelection = "All"
                 preferences.edit().putString("browse", "All").apply()
                 setupBrowseFilter()
-                if (selectedCountry.isNotBlank()) {
-                    val url = "https://iptv-org.github.io/iptv/countries/" +
-                        selectedCountry.lowercase(java.util.Locale.ROOT) + ".m3u"
-                    loadPlaylist("Country:" + selectedCountry, url)
+                channelSelection = "All"
+                if (masterChannels.isNotEmpty()) {
+                    allChannels = masterChannels
+                    currentPlaylist = "All"
+                    applySearch()
                 } else {
-                    loadBrowseSelection()
+                    loadPlaylist("All", masterUrl)
                 }
             }.show()
     }
@@ -263,12 +271,12 @@ class MainActivity : AppCompatActivity() {
         val button = findViewById<Button>(R.id.refreshButton)
         button.isEnabled = false
         syncLabel.text = "Connecting to IPTV-org... 0%"
-        val previous = playlistCache.associateBy { it.url }
+        val previous = masterChannels.associateBy { it.url }
         val syncRequest = playlistGeneration.incrementAndGet()
         thread {
             var error = ""
             val channels = try {
-                val connection = URL("https://iptv-org.github.io/iptv/index.m3u").openConnection() as HttpURLConnection
+                val connection = URL(masterUrl).openConnection() as HttpURLConnection
                 connection.connectTimeout = 15000
                 connection.readTimeout = 30000
                 connection.setRequestProperty("User-Agent", "SimpleIPTV/4.4")
@@ -292,7 +300,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     runOnUiThread { if (!isDestroyed) syncLabel.text = "Comparing channel lists..." }
-                    M3uParser.parse(data.toString("UTF-8"))
+                    val downloaded = data.toString("UTF-8")
+                    val parsed = M3uParser.parse(downloaded)
+                    if (parsed.isNotEmpty()) masterFile.writeText(downloaded)
+                    parsed
                 } finally { connection.disconnect() }
             } catch (e: Exception) {
                 error = e.message ?: e.javaClass.simpleName
@@ -310,6 +321,7 @@ class MainActivity : AppCompatActivity() {
                 val added = latest.keys.count { it !in previous }
                 val removed = previous.keys.count { it !in latest }
                 val unchanged = latest.size - added
+                masterChannels = channels
                 cachedPlaylistName = "All"
                 playlistCache = channels
                 preferences.edit().putLong("last_sync", System.currentTimeMillis()).apply()
@@ -396,7 +408,11 @@ class MainActivity : AppCompatActivity() {
             showFavorites()
         } else {
             val base = sources.firstOrNull { it.name == "All" } ?: sources.first()
-            if (currentPlaylist == "Favorites" || cachedPlaylistName != base.name) {
+            if (masterChannels.isNotEmpty()) {
+                allChannels = masterChannels
+                currentPlaylist = "All"
+                applySearch()
+            } else if (currentPlaylist == "Favorites" || cachedPlaylistName != base.name) {
                 channelSelection = base.name
                 loadPlaylist(base.name, base.url)
             } else {
@@ -469,6 +485,11 @@ class MainActivity : AppCompatActivity() {
         preferences.edit().putString("playlist", name).apply()
         val request = playlistGeneration.incrementAndGet()
         status.text = "Loading $name channels..."
+        if (!forceRefresh && name == "All" && masterChannels.isNotEmpty()) {
+            allChannels = masterChannels
+            applySearch()
+            return
+        }
         if (!forceRefresh && cachedPlaylistName == name && playlistCache.isNotEmpty()) {
             allChannels = playlistCache
             updateMetadataFilters()
@@ -495,6 +516,7 @@ class MainActivity : AppCompatActivity() {
                     cachedPlaylistName = name
                     playlistCache = channels
                 }
+                if (name == "All" && channels.isNotEmpty()) masterChannels = channels
                 allChannels = channels
                 updateMetadataFilters()
                 currentChannelIndex = -1
@@ -542,7 +564,8 @@ class MainActivity : AppCompatActivity() {
                 "Favorites" -> isFavorite(channel)
                 else -> true
             }
-            matches && modeMatches
+            matches && modeMatches && (selectedCountry.isBlank() ||
+                channel.country.split(';', ',').any { it.trim().equals(selectedCountry, true) })
 
         }
         showChannels(filtered)
@@ -646,10 +669,16 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.settingsScanStatus).text = "Loading all playlist sources..."
         thread {
             val catalog = LinkedHashMap<String, Channel>()
-            val scanSources = sources.distinctBy { it.url }
+            val scanSources = listOf(PlaylistSource("All", masterUrl))
             var failures = 0
             for (source in scanSources) {
                 if (generation != scanGeneration.get()) return@thread
+                if (masterChannels.isNotEmpty()) {
+                    masterChannels.forEach { channel ->
+                        if (channel.url.isNotBlank()) catalog.putIfAbsent(channel.url, channel)
+                    }
+                    continue
+                }
                 try {
                     val conn = URL(source.url).openConnection() as HttpURLConnection
                     conn.connectTimeout = 15000
