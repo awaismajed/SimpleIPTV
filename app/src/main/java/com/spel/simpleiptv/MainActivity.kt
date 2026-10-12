@@ -412,8 +412,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.contentArea).visibility = if (show) View.GONE else View.VISIBLE
         findViewById<View>(R.id.settingsPage).visibility = if (show) View.VISIBLE else View.GONE
         if (show && !syncInProgress && scanExecutor == null && !scanLoading) {
-            findViewById<TextView>(R.id.settingsScanStatus).text =
-                if (scanCompleted) "Last scan saved" else "No completed scan"
+            updateSavedScanSummary()
         }
     }
 
@@ -638,7 +637,7 @@ class MainActivity : AppCompatActivity() {
     private fun scanCurrentList() {
         if (scanExecutor != null || scanLoading) {
             cancelScan()
-            findViewById<TextView>(R.id.settingsScanStatus).text = "Scan stopped"
+            updateSavedScanSummary()
             return
         }
         val generation = scanGeneration.incrementAndGet()
@@ -720,7 +719,7 @@ class MainActivity : AppCompatActivity() {
                                             .putString("browse", "Working").apply()
                                         scanButton.text = "Scan complete"
                                         findViewById<TextView>(R.id.settingsScanStatus).text =
-                                            "Finished: ${working.get()} reachable of ${scanList.size}; $failedSources sources unavailable"
+                                            "Finished: ${working.get()} working of ${scanList.size}; $failedSources sources unavailable"
 
                                     }
                                 }
