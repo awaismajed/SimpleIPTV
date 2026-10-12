@@ -24,6 +24,7 @@ class ChannelAdapter(
         val subtitle: TextView = view.findViewById(R.id.channelSubtitle)
         val logo: ImageView = view.findViewById(R.id.channelLogo)
         val star: TextView = view.findViewById(R.id.channelStar)
+        val indicator: TextView = view.findViewById(R.id.channelStatus)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -49,6 +50,19 @@ class ChannelAdapter(
             holder.logo.visibility = View.GONE
         }
         holder.subtitle.text = listOf(channel.category, channel.country, channel.language).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "Live channel" }
+        val state = scanStatus(channel)
+        holder.indicator.text = when (state) {
+            ChannelScanStatus.WORKING -> "●"
+            ChannelScanStatus.NOT_WORKING -> "●"
+            ChannelScanStatus.UNCERTAIN -> "◐"
+            ChannelScanStatus.NOT_TESTED -> "○"
+        }
+        holder.indicator.setTextColor(android.graphics.Color.parseColor(when (state) {
+            ChannelScanStatus.WORKING -> "#32D47B"
+            ChannelScanStatus.NOT_WORKING -> "#FF5964"
+            ChannelScanStatus.UNCERTAIN -> "#F4C542"
+            ChannelScanStatus.NOT_TESTED -> "#8394A5"
+        }))
         holder.star.text = if (isFavorite(channel)) "★" else "☆"
         holder.itemView.setOnClickListener { onClick(channel) }
         holder.star.setOnClickListener {

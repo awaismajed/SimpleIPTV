@@ -67,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     private var channelSelection = "Pakistan"
     private var updatingFilters = false
     private var browseSelection = "All"
+    private var selectedCountry = ""
+    private var selectedCategory = ""
     private var scanCompleted = false
     private var showingSettings = false
     private var playlistCache: List<Channel> = emptyList()
@@ -120,36 +122,134 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { refreshCurrentPlaylist() }
+        findViewById<Button>(R.id.managePlaylistsButton).setOnClickListener { managePlaylists() }
+        findViewById<Button>(R.id.countryFilterButton).setOnClickListener { chooseFilter(true) }
+        findViewById<Button>(R.id.categoryFilterButton).setOnClickListener { chooseFilter(false) }
         browseSelection = preferences.getString("browse", if (scanCompleted) "Working" else "All") ?: "All"
         setupBrowseFilter()
         loadBrowseSelection()
     }
 
     private fun showAddPlaylist() {
-        val input = EditText(this).apply {
-            hint = "https://example.com/channels.m3u"
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        val nameField = EditText(this).apply { hint = "Playlist name"; setSingleLine() }
+        val urlField = EditText(this).apply {
+            hint = "https://example.com/playlist.m3u"
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine()
         }
-        AlertDialog.Builder(this)
-            .setTitle("Add M3U playlist URL")
-            .setView(input)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Add") { _, _ ->
-                val url = input.text.toString().trim()
-                val parsed = runCatching { Uri.parse(url) }.getOrNull()
-                if (parsed?.scheme !in listOf("https", "http") || parsed?.host.isNullOrBlank()) {
-                    status.text = "Enter a valid HTTP(S) playlist URL"
+        fields.addView(nameField)
+        fields.addView(urlField)
+        val dialog = AlertDialog.Builder(this).setTitle("Add M3U playlist").setView(fields)
+            .setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = nameField.text.toString().trim()
+                val url = urlField.text.toString().trim()
+                val uri = runCatching { Uri.parse(url) }.getOrNull()
+                if (name.isBlank() || name in listOf("All", "Working", "Favorites") ||
+                    sources.any { it.name.equals(name, true) } ||
+                    uri?.scheme !in listOf("https", "http") || uri?.host.isNullOrBlank()) {
+                    nameField.error = "Unique playlist name and valid HTTP(S) URL required"
                 } else {
-                    val name = "Custom " + (customSources.size + 1)
                     val updated = preferences.getStringSet("custom_sources", emptySet()).orEmpty().toMutableSet()
                     updated.add(name + "\t" + url)
                     preferences.edit().putStringSet("custom_sources", updated).apply()
-                    channelSelection = name
                     browseSelection = name
                     setupBrowseFilter()
-                    loadPlaylist(name, url)
+                    loadBrowseSelection()
+                    dialog.dismiss()
                 }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun managePlaylists() {
+        val list = customSources
+        if (list.isEmpty()) {
+            AlertDialog.Builder(this).setMessage("No custom playlists yet.")
+                .setPositiveButton("Add playlist") { _, _ -> showAddPlaylist() }
+                .setNegativeButton("Close", null).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle("Manage custom playlists")
+            .setItems(list.map { it.name }.toTypedArray()) { _, index ->
+                val selected = list[index]
+                AlertDialog.Builder(this).setTitle(selected.name)
+                    .setItems(arrayOf("Rename / edit URL", "Delete playlist")) { _, action ->
+                        if (action == 0) editPlaylist(selected) else {
+                            AlertDialog.Builder(this).setTitle("Delete ${selected.name}?")
+                                .setMessage("This removes the playlist, not its saved favorites.")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton("Delete") { _, _ ->
+                                    saveCustomSources(customSources.filterNot { it == selected })
+                                    browseSelection = "All"
+                                    setupBrowseFilter()
+                                    loadBrowseSelection()
+                                }.show()
+                        }
+                    }.show()
+            }.setNegativeButton("Close", null).show()
+    }
+
+    private fun saveCustomSources(list: List<PlaylistSource>) {
+        preferences.edit().putStringSet("custom_sources",
+            list.map { it.name + "\t" + it.url }.toSet()).apply()
+    }
+
+    private fun editPlaylist(source: PlaylistSource) {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        val nameField = EditText(this).apply { setText(source.name); setSingleLine() }
+        val urlField = EditText(this).apply { setText(source.url); setSingleLine() }
+        fields.addView(nameField)
+        fields.addView(urlField)
+        val dialog = AlertDialog.Builder(this).setTitle("Edit playlist")
+            .setView(fields).setNegativeButton("Cancel", null)
+            .setPositiveButton("Save", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = nameField.text.toString().trim()
+                val url = urlField.text.toString().trim()
+                val uri = runCatching { Uri.parse(url) }.getOrNull()
+                if (name.isBlank() || name in listOf("All", "Working", "Favorites") ||
+                    customSources.any { it != source && it.name.equals(name, true) } ||
+                    uri?.scheme !in listOf("http", "https") || uri?.host.isNullOrBlank()) {
+                    nameField.error = "Enter a unique name and valid URL"
+                } else {
+                    saveCustomSources(customSources.map { if (it == source) PlaylistSource(name, url) else it })
+                    if (browseSelection == source.name) browseSelection = name
+                    setupBrowseFilter()
+                    loadBrowseSelection()
+                    dialog.dismiss()
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun chooseFilter(country: Boolean) {
+        val values = (if (country) allChannels.map { it.country } else allChannels.map { it.category })
+            .filter { it.isNotBlank() }.distinct().sorted()
+        val options = listOf(if (country) "All countries" else "All categories") + values
+        AlertDialog.Builder(this).setTitle(if (country) "Select country" else "Select category")
+            .setItems(options.toTypedArray()) { _, index ->
+                if (country) {
+                    selectedCountry = if (index == 0) "" else options[index]
+                    findViewById<Button>(R.id.countryFilterButton).text =
+                        "Country: " + selectedCountry.ifBlank { "All" }
+                } else {
+                    selectedCategory = if (index == 0) "" else options[index]
+                    findViewById<Button>(R.id.categoryFilterButton).text =
+                        "Category: " + selectedCategory.ifBlank { "All" }
+                }
+                applySearch()
             }.show()
     }
 
@@ -185,7 +285,7 @@ class MainActivity : AppCompatActivity() {
     private val categoryGroups = listOf("Sports", "Religious", "News", "Movies", "Entertainment", "Kids", "Music", "Documentary", "Education", "Lifestyle", "Other")
     private val browseOptions: List<String>
         get() = (listOf("All", "Working", "Favorites") +
-            sources.filter { it.name != "All" }.map { it.name } + categoryGroups).distinct()
+            customSources.map { it.name }).distinct()
 
     private fun categoryGroup(channel: Channel): String {
         val text = (channel.category + " " + channel.name).lowercase()
@@ -371,10 +471,10 @@ class MainActivity : AppCompatActivity() {
             val modeMatches = when (mode) {
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
                 "Favorites" -> isFavorite(channel)
-                in categoryGroups -> categoryGroup(channel) == mode
                 else -> true
             }
-            matches && modeMatches && when (mode) {
+            matches && modeMatches && (selectedCountry.isBlank() || channel.country.equals(selectedCountry, true)) &&
+                (selectedCategory.isBlank() || channel.category.equals(selectedCategory, true)) && when (mode) {
                 "All" -> true
                 "Working" -> scanResults[channel.url] == ChannelScanStatus.WORKING
                 else -> scanResults[channel.url] == ChannelScanStatus.WORKING
@@ -604,7 +704,7 @@ class MainActivity : AppCompatActivity() {
         else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         playerView.layoutParams = if (landscape)
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-        else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(190))
+        else LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(250))
         findViewById<View>(R.id.topBar).visibility = View.VISIBLE
         val panel = findViewById<LinearLayout>(R.id.filterPanel)
         for (i in 0 until panel.childCount) {
