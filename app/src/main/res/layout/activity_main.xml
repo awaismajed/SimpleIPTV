@@ -91,6 +91,9 @@
                 android:text="PLAYLIST MANAGEMENT" android:textColor="#AFC4D7" android:textSize="12sp"/>
             <Button android:id="@+id/addPlaylistButton" android:layout_width="match_parent"
                 android:layout_height="50dp" android:text="+ Add M3U playlist URL" android:textAllCaps="false"/>
+            <Button android:id="@+id/addLocalPlaylistButton" android:layout_width="match_parent"
+                android:layout_height="50dp" android:text="+ Import M3U file from phone"
+                android:textAllCaps="false"/>
             <Button android:id="@+id/managePlaylistsButton" android:layout_width="match_parent" android:layout_height="50dp" android:text="Manage / rename / delete playlists" android:textAllCaps="false"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="BASE PLAYLIST · IPTV-ORG" android:textColor="#AFC4D7"
