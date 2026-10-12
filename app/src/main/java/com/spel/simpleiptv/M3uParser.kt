@@ -21,7 +21,10 @@ object M3uParser {
                     name = line.substringAfterLast(',').trim().ifBlank { attribute(line, "tvg-name").ifBlank { "Channel" } }
                     category = attribute(line, "group-title")
                     country = attribute(line, "tvg-country").ifBlank {
-                        Regex("""\\.([a-zA-Z]{2})(?:@[^"]*)?$""").find(attribute(line, "tvg-id"))?.groupValues?.get(1)?.uppercase().orEmpty()
+                        val tvgId = attribute(line, "tvg-id").substringBefore('@')
+                        val code = tvgId.substringAfterLast('.', "")
+                        code.takeIf { it.length == 2 && it.all(Char::isLetter) }
+                            ?.uppercase(java.util.Locale.ROOT).orEmpty()
                     }
                     id = attribute(line, "tvg-id")
                     logo = attribute(line, "tvg-logo")
