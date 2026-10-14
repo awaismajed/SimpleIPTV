@@ -20,6 +20,37 @@ object VpnGateDirectory {
     private const val MAX_CONFIG_CHARS = 100_000
     private val ipv4 = Regex("""(?:[0-9]{1,3}\.){3}[0-9]{1,3}""")
 
+    /**
+     * Fetches relay metadata on a background thread. Never call from the UI thread.
+     * The directory is untrusted: successful discovery is NOT a working VPN connection.
+     */
+    fun fetch(): List<VpnGateRelay> {
+        val connection = (java.net.URL(DIRECTORY_URL).openConnection() as javax.net.ssl.HttpsURLConnection)
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 15_000
+        connection.instanceFollowRedirects = false
+        connection.setRequestProperty("Accept", "text/plain")
+        try {
+            if (connection.responseCode != 200) return emptyList()
+            val contentLength = connection.contentLengthLong
+            if (contentLength > MAX_CSV_CHARS) return emptyList()
+            val csv = connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                val buffer = CharArray(8192)
+                val text = StringBuilder()
+                while (true) {
+                    val count = reader.read(buffer)
+                    if (count < 0) break
+                    if (text.length + count > MAX_CSV_CHARS) return emptyList()
+                    text.append(buffer, 0, count)
+                }
+                text.toString()
+            }
+            return parse(csv)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun parse(csv: String): List<VpnGateRelay> {
         if (csv.length > MAX_CSV_CHARS) return emptyList()
         val lines = csv.lineSequence().filter { it.isNotBlank() && !it.startsWith("*") }
