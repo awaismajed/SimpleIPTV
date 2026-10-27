@@ -46,6 +46,9 @@ jobs:
       - name: Install webOS CLI
         run: npm install --global @webos-tools/cli
 
+      - name: Generate required webOS icon
+        run: echo 'iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAABuElEQVR4nO3by00DQRCE4TLiCElADiCRDZGRDRJBOAoCgANqIa1s7bgLz1Q39d8teT63Z/3YOdw9PH3BpbtZ/QSqZ0AyA5IZkMyAZAYkMyCZAckMSGZAMgOS3TIPfnn7+Kvnsbz31+fU4w6ZHxM6wW27FPIiwM5w20Yhh/fA/4QHjK/XFxGyobfwuVcju/Eqll1jegI74QH59ewCnnpluuFFp9a1txd6DyQzIJkByQxIZkAyKcDPY71vO1KAwA9iJUg5wKgKoiwgUGMapQEjZcQSgIDuNJYBjNQQywECWtNYEjBSgCwNGK1EbAEIrJvGNoDRbMR2gMDcaaTuTFDt/nHeXw7tJnAmHtBoAmfDRS0mcBUeUHwCV8JFJQEV4KJyb2ElPKDQBKrBRSUmUBUPEJ9AZbhIdgIr4AGCE1gFLpKawGp4gBhgxQxIZkAyA5IZkGwXMHPjddUyN9SnJ7AbYnY9w2fluoGNNHKcw3sg2TBg18M15xpdr88Lb7rqeeFtnSCnnlh3v/kiQmZAMgOSGZBs2U/617iCr/is6gkkMyCZAcn8QZrME0hmQDIDkhmQzIBkBiQzINk3bVx5VAXnX50AAAAASUVORK5CYII=' | base64 --decode > webos/icon.png
+
       - name: Build webOS IPK
         run: |
           ares-package webos -o release
