@@ -22,7 +22,9 @@ class TvActivity:AppCompatActivity() {
     private lateinit var player:ExoPlayer
     private lateinit var video:PlayerView
     private lateinit var sidebar:LinearLayout
-    private lateinit var entries:LinearLayout
+    private lateinit var entries:ListView
+    private lateinit var adapter:ArrayAdapter<String>
+    private fun dp(n:Int)=(n*resources.displayMetrics.density+0.5f).toInt()
     private lateinit var top:LinearLayout
     private lateinit var title:TextView
     private lateinit var search:EditText
@@ -44,9 +46,10 @@ class TvActivity:AppCompatActivity() {
     }
     private fun label(s:String,size:Float=17f)=TextView(this).apply {
         text=s;textSize=size;setTextColor(Color.WHITE);gravity=Gravity.CENTER_VERTICAL
-        setPadding(12,9,12,9)
+        setSingleLine(true);ellipsize=android.text.TextUtils.TruncateAt.END
+        setPadding(dp(6),dp(2),dp(6),dp(2))
     }
-    private fun action(s:String,click:()->Unit)=label(s,16f).apply {
+    private fun action(s:String,click:()->Unit)=label(s,13f).apply {
         isFocusable=true;backgroundTintList=null
         setOnClickListener{click()}
         setOnFocusChangeListener{_,focused->setBackgroundColor(if(focused)0xff1763dd.toInt() else Color.TRANSPARENT)}
@@ -59,26 +62,42 @@ class TvActivity:AppCompatActivity() {
         video=PlayerView(this).apply {this.player=this@TvActivity.player;useController=false}
         root.addView(video,FrameLayout.LayoutParams(-1,-1))
         top=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;setBackgroundColor(0xc9001429.toInt());gravity=Gravity.CENTER_VERTICAL}
-        title=label("SimpleIPTV TV",20f)
-        top.addView(title,LinearLayout.LayoutParams(0,52,1f))
+        title=label("SimpleIPTV TV",17f)
+        top.addView(title,LinearLayout.LayoutParams(0,dp(48),1f))
         top.addView(action("♡"){toggleFavorite()})
         top.addView(action("≡"){choosePlaylist()})
         top.addView(action("🌐"){chooseCountry()})
         top.addView(action("⚙"){settings()})
         top.addView(action("⛶"){showPanels(false)})
-        root.addView(top,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
+        root.addView(top,FrameLayout.LayoutParams(-1,dp(48),Gravity.TOP))
         sidebar=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(0xe9001429.toInt())}
         search=EditText(this).apply {hint="Search channels";setSingleLine(true);setTextColor(Color.WHITE);setHintTextColor(Color.LTGRAY)}
-        sidebar.addView(search,LinearLayout.LayoutParams(-1,52))
+        sidebar.addView(search,LinearLayout.LayoutParams(-1,dp(44)))
+        search.textSize=13f
         search.isFocusableInTouchMode=true
         val filters=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        listOf("All","Favorites","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=f;refresh()}},LinearLayout.LayoutParams(0,46,1f))}
+        listOf("All","Favorites","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=f;refresh()}},LinearLayout.LayoutParams(0,dp(40),1f))}
         sidebar.addView(filters)
-        val scroll=ScrollView(this)
-        entries=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
-        scroll.addView(entries);sidebar.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        entries=ListView(this).apply {
+            dividerHeight=dp(1)
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        adapter=object:ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,mutableListOf()){
+            override fun getView(position:Int,convertView:View?,parent:android.view.ViewGroup):View {
+                val view=(convertView as? TextView) ?: label("",13f)
+                val ch=visible[position]
+                view.text="${position+1}. ${ch.name} ${if(ch.url in favorites) "♥" else ""}"
+                view.minHeight=dp(42)
+                view.setBackgroundColor(if(ch.url==current?.url)0xff1459bb.toInt() else Color.TRANSPARENT)
+                return view
+            }
+        }
+        entries.adapter=adapter
+        entries.setOnItemClickListener{_,_,position,_->play(visible[position])}
+        entries.setOnItemLongClickListener{_,_,position,_->toggleFavorite(visible[position]);true}
+        sidebar.addView(entries,LinearLayout.LayoutParams(-1,0,1f))
         val width=(resources.displayMetrics.widthPixels*0.19).toInt()
-        root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START))
+        root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START).apply{topMargin=dp(48)})
         setContentView(root)
         search.addTextChangedListener(object:android.text.TextWatcher{
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
@@ -121,13 +140,10 @@ class TvActivity:AppCompatActivity() {
         val q=search.text.toString().trim()
         visible=channels.filter {(mode!="Favorites"||it.url in favorites)&&
             (country.isEmpty()||it.country==country)&&it.name.contains(q,true)}
-        entries.removeAllViews()
-        visible.forEachIndexed {i,c->
-            val item=action("${i+1}. ${c.name.take(23)} ${if(c.url in favorites)"♥" else ""}"){play(c)}
-            item.setOnLongClickListener{toggleFavorite(c);true}
-            entries.addView(item,LinearLayout.LayoutParams(-1,46))
-        }
-        if(sidebar.visibility==View.VISIBLE && entries.childCount>0 && !search.hasFocus())entries.getChildAt(0).requestFocus()
+        adapter.clear()
+        adapter.addAll(visible.mapIndexed{i,ch->"${i+1}. ${ch.name}"})
+        adapter.notifyDataSetChanged()
+        if(sidebar.visibility==View.VISIBLE && visible.isNotEmpty() && !search.hasFocus())entries.requestFocus()
     }
     private fun play(c:TvChannel){
         current=c
@@ -183,7 +199,7 @@ class TvActivity:AppCompatActivity() {
         top.visibility=if(show||bannerAlways)View.VISIBLE else View.GONE
         if(show) {
             search.clearFocus()
-            if(entries.childCount>0)entries.getChildAt(0).requestFocus()
+            if(visible.isNotEmpty())entries.requestFocus()
         }
     }
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean{
