@@ -38,7 +38,7 @@ class TvActivity:AppCompatActivity() {
     private var visible=emptyList<TvChannel>()
     private var current:TvChannel?=null
     private var country=""
-    private var mode="All"
+    private var mode="Favorites"
     private lateinit var clock:TextView
     private lateinit var fullscreenButton:TextView
     private val clockHandler=Handler(Looper.getMainLooper())
@@ -96,7 +96,7 @@ class TvActivity:AppCompatActivity() {
         search.textSize=13f
         search.isFocusableInTouchMode=true
         val filters=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        listOf("All","♥","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=if(f=="♥")"Favorites" else "All";refresh()}},LinearLayout.LayoutParams(0,dp(48),1f))}
+        listOf("♥","All","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=if(f=="♥")"Favorites" else "All";refresh()}},LinearLayout.LayoutParams(0,dp(48),1f))}
         sidebar.addView(filters)
         entries=ListView(this).apply {
             dividerHeight=dp(1)
@@ -167,6 +167,7 @@ class TvActivity:AppCompatActivity() {
         adapter.clear()
         adapter.addAll(visible.mapIndexed{i,ch->"${i+1}. ${ch.name}"})
         adapter.notifyDataSetChanged()
+        entries.emptyView=null
         if(sidebar.visibility==View.VISIBLE && visible.isNotEmpty() && !search.hasFocus())entries.requestFocus()
     }
     private fun play(c:TvChannel){
