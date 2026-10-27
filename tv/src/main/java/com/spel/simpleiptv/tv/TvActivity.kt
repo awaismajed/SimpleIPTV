@@ -242,14 +242,78 @@ class TvActivity:AppCompatActivity() {
             }.show()
     }
     private fun settings(){
-        val opts=arrayOf("Choose playlist","Choose country","Clear country filter")
-        AlertDialog.Builder(this).setTitle("TV Settings").setItems(opts){_,which->
-            when(which){
-                0->choosePlaylist()
-                1->chooseCountry()
-                2->{country="";refresh()}
+        val opts=arrayOf("Playlist management","Playback settings","Display & interface","Data & backup","About & diagnostics")
+        AlertDialog.Builder(this).setTitle("Settings").setItems(opts){_,i->
+            when(i){0->playlistSettings();1->playbackSettings();2->displaySettings();3->dataSettings();4->aboutSettings()}
+        }.show()
+    }
+    private fun playlistSettings(){
+        val opts=arrayOf("Choose playlist","Add M3U URL","Rename custom playlist","Delete custom playlist","Refresh current playlist")
+        AlertDialog.Builder(this).setTitle("Playlist management").setItems(opts){_,i->
+            when(i){0->choosePlaylist();1->addPlaylist();2->editPlaylist(false);3->editPlaylist(true);4->load(sources.firstOrNull{it.name==currentSourceName}?:sources.first())}
+        }.show()
+    }
+    private fun editPlaylist(delete:Boolean){
+        val custom=sources.drop(2)
+        if(custom.isEmpty()){Toast.makeText(this,"No custom playlists",Toast.LENGTH_SHORT).show();return}
+        AlertDialog.Builder(this).setTitle("Custom playlists").setItems(custom.map{it.name}.toTypedArray()){_,i->
+            val old=custom[i]
+            if(delete){
+                AlertDialog.Builder(this).setMessage("Delete "+old.name+"?")
+                    .setPositiveButton("Delete"){_,_->sources.remove(old);saveSources();if(currentSourceName==old.name)load(sources.first())}
+                    .setNegativeButton("Cancel",null).show()
+            }else{
+                val input=EditText(this).apply{setText(old.name)}
+                AlertDialog.Builder(this).setTitle("Rename playlist").setView(input)
+                    .setPositiveButton("Save"){_,_->
+                        val name=input.text.toString().trim()
+                        if(name.isNotEmpty()&&sources.none{it.name==name&&it!=old}){
+                            sources[sources.indexOf(old)]=TvSource(name,old.url)
+                            if(currentSourceName==old.name)currentSourceName=name
+                            saveSources()
+                        }
+                    }.setNegativeButton("Cancel",null).show()
             }
         }.show()
+    }
+    private fun saveSources(){
+        prefs.edit().putStringSet("sources",sources.drop(2).map{it.name+"\\t"+it.url}.toSet()).apply()
+    }
+    private fun playbackSettings(){
+        val on=prefs.getBoolean("restore_last",true)
+        val opts=arrayOf("Restore last watched: "+if(on)"On" else "Off","Stream retry: 2 attempts","Buffering: Automatic","Aspect ratio: Fit")
+        AlertDialog.Builder(this).setTitle("Playback settings").setItems(opts){_,i->
+            if(i==0){prefs.edit().putBoolean("restore_last",!on).apply();playbackSettings()}
+        }.show()
+    }
+    private fun displaySettings(){
+        val awake=prefs.getBoolean("keep_awake",true)
+        val opts=arrayOf("Keep screen awake: "+if(awake)"On" else "Off","Banner: Always visible","Channel list: Full Screen toggle","Sidebar: Adaptive compact","Clock: Device time","Font: Automatic","Theme: Dark")
+        AlertDialog.Builder(this).setTitle("Display & interface").setItems(opts){_,i->
+            if(i==0){
+                prefs.edit().putBoolean("keep_awake",!awake).apply()
+                if(awake)window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                displaySettings()
+            }
+        }.show()
+    }
+    private fun dataSettings(){
+        val opts=arrayOf("Saved favorites: "+favorites.size,"Clear favorites","Reset playback/display preferences")
+        AlertDialog.Builder(this).setTitle("Data & backup").setItems(opts){_,i->
+            when(i){
+                1->AlertDialog.Builder(this).setMessage("Remove all favorites?")
+                    .setPositiveButton("Remove"){_,_->favorites.clear();prefs.edit().putStringSet("favorites",emptySet()).apply();refresh()}
+                    .setNegativeButton("Cancel",null).show()
+                2->AlertDialog.Builder(this).setMessage("Reset preferences?")
+                    .setPositiveButton("Reset"){_,_->prefs.edit().remove("restore_last").remove("keep_awake").apply();window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
+                    .setNegativeButton("Cancel",null).show()
+            }
+        }.show()
+    }
+    private fun aboutSettings(){
+        val msg="Playlist: "+currentSourceName+"\\nChannels: "+channels.size+"\\nVisible: "+visible.size+"\\nFavorites: "+favorites.size+"\\nAndroid: "+android.os.Build.VERSION.RELEASE
+        AlertDialog.Builder(this).setTitle("SimpleIPTV TV V1.3").setMessage(msg).setPositiveButton("OK",null).show()
     }
     private fun showPanels(show:Boolean){
         sidebar.visibility=if(show)View.VISIBLE else View.GONE
