@@ -83,8 +83,6 @@ class TvActivity:AppCompatActivity() {
         top.addView(action("◀"){stepChannel(-1)})
         top.addView(action("▶"){stepChannel(1)})
         top.addView(action("♡"){toggleFavorite()})
-        top.addView(action("Playlists"){choosePlaylist()})
-        top.addView(action("Countries"){chooseCountry()})
         top.addView(action("⚙"){settings()})
         fullscreenButton=action("⛶"){showPanels(sidebar.visibility!=View.VISIBLE)}
         top.addView(fullscreenButton)
@@ -98,7 +96,7 @@ class TvActivity:AppCompatActivity() {
         search.textSize=13f
         search.isFocusableInTouchMode=true
         val filters=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        listOf("All","Favorites","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=f;refresh()}},LinearLayout.LayoutParams(0,dp(40),1f))}
+        listOf("All","♥","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=if(f=="♥")"Favorites" else "All";refresh()}},LinearLayout.LayoutParams(0,dp(48),1f))}
         sidebar.addView(filters)
         entries=ListView(this).apply {
             dividerHeight=dp(1)
@@ -204,7 +202,6 @@ class TvActivity:AppCompatActivity() {
             AlertDialog.Builder(this).setTitle("Country filter").setMessage("No country information in this playlist. Select All playlist or import M3U with tvg-country or country-coded tvg-id.").setPositiveButton("OK",null).show()
             return
         }
-        val items=listOf("All countries")+codes.map{countryName(it)}
         val ordered=codes.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER){countryName(it)})
         val labels=listOf("All countries")+ordered.map{countryName(it)}
         AlertDialog.Builder(this).setTitle("Country filter").setItems(labels.toTypedArray()){_,i->
