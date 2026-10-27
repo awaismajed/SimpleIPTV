@@ -97,7 +97,7 @@ class TvActivity:AppCompatActivity() {
         entries.setOnItemClickListener{_,_,position,_->play(visible[position])}
         entries.setOnItemLongClickListener{_,_,position,_->toggleFavorite(visible[position]);true}
         sidebar.addView(entries,LinearLayout.LayoutParams(-1,0,1f))
-        val width=(resources.displayMetrics.widthPixels*0.27).toInt()
+        val width=(resources.displayMetrics.widthPixels*0.19).toInt()
         root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START).apply{topMargin=dp(48)})
         setContentView(root)
         search.addTextChangedListener(object:android.text.TextWatcher{
