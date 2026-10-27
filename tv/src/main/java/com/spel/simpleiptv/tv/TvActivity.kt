@@ -7,6 +7,8 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.graphics.drawable.GradientDrawable
+import androidx.media3.ui.AspectRatioFrameLayout
 import android.os.Handler
 import android.os.Looper
 import java.text.SimpleDateFormat
@@ -41,6 +43,8 @@ class TvActivity:AppCompatActivity() {
     private var mode="Favorites"
     private lateinit var clock:TextView
     private lateinit var fullscreenButton:TextView
+    private lateinit var pauseButton:TextView
+    private var retryCount=0
     private val clockHandler=Handler(Looper.getMainLooper())
     private val clockUpdater=object:Runnable { override fun run(){if(::clock.isInitialized){clock.text=SimpleDateFormat("h:mm a",Locale.getDefault()).format(Date())};clockHandler.postDelayed(this,30000)} }
     private var currentSourceName="All"
@@ -72,20 +76,24 @@ class TvActivity:AppCompatActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if(prefs.getBoolean("keep_awake",true))window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         player=ExoPlayer.Builder(this).build()
+        player.addListener(object:androidx.media3.common.Player.Listener{override fun onPlayerError(error:androidx.media3.common.PlaybackException){if(retryCount<2){retryCount++;clockHandler.postDelayed({if(!isFinishing){player.prepare();player.play()}},1500L*retryCount)}else Toast.makeText(this@TvActivity,"Stream unavailable",Toast.LENGTH_LONG).show()}})
         val root=FrameLayout(this).apply{setBackgroundColor(Color.BLACK)}
-        video=PlayerView(this).apply {this.player=this@TvActivity.player;useController=false}
+        video=PlayerView(this).apply {this.player=this@TvActivity.player;useController=false;resizeMode=AspectRatioFrameLayout.RESIZE_MODE_FIT}
         root.addView(video,FrameLayout.LayoutParams(-1,-1))
-        top=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;setBackgroundColor(0xc9001429.toInt());gravity=Gravity.CENTER_VERTICAL}
+        top=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0x99000000.toInt(),0x22000000));gravity=Gravity.CENTER_VERTICAL}
         title=label("SimpleIPTV TV",15f)
         top.addView(title,LinearLayout.LayoutParams(0,dp(56),1f))
         top.addView(action("◀"){stepChannel(-1)})
         top.addView(action("▶"){stepChannel(1)})
+        pauseButton=action("Ⅱ"){if(player.isPlaying){player.pause();pauseButton.text="▶"}else{player.play();pauseButton.text="Ⅱ"}}
+        top.addView(pauseButton)
         top.addView(action("♡"){toggleFavorite()})
         top.addView(action("⚙"){settings()})
         fullscreenButton=action("⛶"){showPanels(sidebar.visibility!=View.VISIBLE)}
         top.addView(fullscreenButton)
+        top.addView(action("✕"){AlertDialog.Builder(this).setTitle("Exit SimpleIPTV?").setPositiveButton("Exit"){_,_->finish()}.setNegativeButton("Cancel",null).show()})
         clock=label("",13f).apply{gravity=Gravity.CENTER}
         top.addView(clock,LinearLayout.LayoutParams(dp(88),dp(56)))
         clockHandler.post(clockUpdater)
@@ -96,7 +104,7 @@ class TvActivity:AppCompatActivity() {
         search.textSize=13f
         search.isFocusableInTouchMode=true
         val filters=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        listOf("♥","All","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=if(f=="♥")"Favorites" else "All";refresh()}},LinearLayout.LayoutParams(0,dp(48),1f))}
+        listOf("♥","All","🌐").forEach {f->filters.addView(action(f){if(f=="🌐")chooseCountry() else {mode=if(f=="♥")"Favorites" else "All";refresh()}},LinearLayout.LayoutParams(0,dp(48),1f))}
         sidebar.addView(filters)
         entries=ListView(this).apply {
             dividerHeight=dp(1)
@@ -116,7 +124,8 @@ class TvActivity:AppCompatActivity() {
         entries.setOnItemClickListener{_,_,position,_->play(visible[position])}
         entries.setOnItemLongClickListener{_,_,position,_->toggleFavorite(visible[position]);true}
         sidebar.addView(entries,LinearLayout.LayoutParams(-1,0,1f))
-        val width=(resources.displayMetrics.widthPixels*0.19).toInt()
+        val pixels=resources.displayMetrics.widthPixels
+        val width=if(resources.configuration.smallestScreenWidthDp<600)(pixels*0.32f).toInt() else (pixels*0.19f).toInt().coerceAtLeast(dp(160)).coerceAtMost(dp(330))
         root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START).apply{topMargin=dp(56)})
         setContentView(root)
         search.addTextChangedListener(object:android.text.TextWatcher{
@@ -125,7 +134,7 @@ class TvActivity:AppCompatActivity() {
             override fun afterTextChanged(s:android.text.Editable?){}
         })
         showPanels(true)
-        load(sources.first())
+        load(sources.firstOrNull{it.name==prefs.getString("last_source","All")}?:sources.first())
     }
     private fun parse(text:String):List<TvChannel>{
         val output=ArrayList<TvChannel>();var name="";var country=""
@@ -155,7 +164,7 @@ class TvActivity:AppCompatActivity() {
                 try{c.inputStream.bufferedReader().use{parse(it.readText())}}finally{c.disconnect()}
             }
             runOnUiThread {
-                result.onSuccess {channels=it;title.text="SimpleIPTV TV · ${source.name}";refresh()}
+                result.onSuccess {channels=it;country="";title.text="SimpleIPTV TV · ${source.name}";refresh();if(prefs.getBoolean("restore_last",true)){channels.firstOrNull{ch->ch.url==prefs.getString("last_channel",null)}?.let{ch->play(ch)}}}
                     .onFailure {title.text="Playlist unavailable: ${it.message}"}
             }
         }
@@ -172,8 +181,11 @@ class TvActivity:AppCompatActivity() {
     }
     private fun play(c:TvChannel){
         current=c
+        retryCount=0
+        prefs.edit().putString("last_channel",c.url).putString("last_source",currentSourceName).apply()
         player.setMediaItem(MediaItem.fromUri(c.url));player.prepare();player.play()
         title.text="${c.name}   •   ${countryName(c.country)}"
+        pauseButton.text="Ⅱ"
         adapter.notifyDataSetChanged()
     }
     private fun stepChannel(direction:Int){
