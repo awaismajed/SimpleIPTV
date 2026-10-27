@@ -5,6 +5,5 @@
   "type": "web",
   "main": "index.html",
   "title": "SimpleIPTV webOS",
-  "icon": "icon.png",
   "resolution": "1280x720"
 }
