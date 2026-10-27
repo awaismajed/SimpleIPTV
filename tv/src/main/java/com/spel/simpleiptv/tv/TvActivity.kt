@@ -34,6 +34,7 @@ class TvActivity:AppCompatActivity() {
     private var country=""
     private var mode="All"
     private var bannerAlways=false
+    private var listAlways=true
     private var currentSourceName="All"
     private val prefs by lazy {getSharedPreferences("tv_settings",MODE_PRIVATE)}
     private val favorites by lazy {prefs.getStringSet("favorites",emptySet()).orEmpty().toMutableSet()}
@@ -96,7 +97,7 @@ class TvActivity:AppCompatActivity() {
         entries.setOnItemClickListener{_,_,position,_->play(visible[position])}
         entries.setOnItemLongClickListener{_,_,position,_->toggleFavorite(visible[position]);true}
         sidebar.addView(entries,LinearLayout.LayoutParams(-1,0,1f))
-        val width=(resources.displayMetrics.widthPixels*0.19).toInt()
+        val width=(resources.displayMetrics.widthPixels*0.27).toInt()
         root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START).apply{topMargin=dp(48)})
         setContentView(root)
         search.addTextChangedListener(object:android.text.TextWatcher{
@@ -104,17 +105,23 @@ class TvActivity:AppCompatActivity() {
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){refresh()}
             override fun afterTextChanged(s:android.text.Editable?){}
         })
-        bannerAlways=prefs.getBoolean("banner_always",false)
+        bannerAlways=prefs.getBoolean("banner_always",true)
+        listAlways=prefs.getBoolean("list_always",true)
+        showPanels(true)
         load(sources.first())
     }
     private fun parse(text:String):List<TvChannel>{
         val output=ArrayList<TvChannel>();var name="";var country=""
         val attr=Regex("""tvg-country="([^"]*)"""",RegexOption.IGNORE_CASE)
+        val idAttr=Regex("""tvg-id="([^"]*)"""",RegexOption.IGNORE_CASE)
         text.lineSequence().forEach {raw->
             val s=raw.trim()
             if(s.startsWith("#EXTINF",true)){
                 name=s.substringAfterLast(",","Channel").trim()
-                country=attr.find(s)?.groupValues?.get(1)?.uppercase().orEmpty()
+                val id=idAttr.find(s)?.groupValues?.get(1).orEmpty()
+                val suffix=id.substringBefore("@").substringAfterLast(".","")
+                val fallback=if(suffix.length==2 && suffix.all{it.isLetter()})suffix else ""
+                country=attr.find(s)?.groupValues?.get(1).orEmpty().ifBlank{fallback}.uppercase(java.util.Locale.ROOT)
             }else if(s.isNotEmpty()&&!s.startsWith("#")&&(s.startsWith("http://")||s.startsWith("https://"))){
                 output.add(TvChannel(name.ifBlank{"Channel"},s,country));name="";country=""
             }
@@ -149,7 +156,8 @@ class TvActivity:AppCompatActivity() {
         current=c
         player.setMediaItem(MediaItem.fromUri(c.url));player.prepare();player.play()
         title.text="${c.name}   •   ${c.country}"
-        showPanels(false)
+        showPanels(listAlways)
+        adapter.notifyDataSetChanged()
     }
     private fun toggleFavorite(c:TvChannel?=current){
         if(c==null)return
@@ -159,6 +167,10 @@ class TvActivity:AppCompatActivity() {
     }
     private fun chooseCountry(){
         val codes=channels.map{it.country}.filter{it.isNotBlank()}.distinct().sorted()
+        if(codes.isEmpty()){
+            AlertDialog.Builder(this).setTitle("Country filter").setMessage("No country information in this playlist. Select All playlist or import M3U with tvg-country or country-coded tvg-id.").setPositiveButton("OK",null).show()
+            return
+        }
         val items=listOf("All countries")+codes
         AlertDialog.Builder(this).setTitle("Country filter").setItems(items.toTypedArray()){_,i->
             country=if(i==0)"" else items[i];refresh()
@@ -185,12 +197,13 @@ class TvActivity:AppCompatActivity() {
             }.show()
     }
     private fun settings(){
-        val opts=arrayOf(if(bannerAlways)"Top banner: Always show ✓" else "Top banner: Auto hide ✓","Choose playlist","Clear country filter")
+        val opts=arrayOf(if(listAlways)"Channel list: Always visible ✓" else "Channel list: Hide on play ✓",if(bannerAlways)"Top banner: Always visible ✓" else "Top banner: Fullscreen hide ✓","Choose playlist","Clear country filter")
         AlertDialog.Builder(this).setTitle("TV Settings").setItems(opts){_,which->
             when(which){
-                0->{bannerAlways=!bannerAlways;prefs.edit().putBoolean("banner_always",bannerAlways).apply();showPanels(sidebar.visibility==View.VISIBLE)}
-                1->choosePlaylist()
-                2->{country="";refresh()}
+                0->{listAlways=!listAlways;prefs.edit().putBoolean("list_always",listAlways).apply();showPanels(listAlways)}
+                1->{bannerAlways=!bannerAlways;prefs.edit().putBoolean("banner_always",bannerAlways).apply();showPanels(sidebar.visibility==View.VISIBLE)}
+                2->choosePlaylist()
+                3->{country="";refresh()}
             }
         }.show()
     }
