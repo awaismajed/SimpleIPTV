@@ -6,6 +6,12 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
+import android.os.Handler
+import android.os.Looper
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
@@ -33,8 +39,10 @@ class TvActivity:AppCompatActivity() {
     private var current:TvChannel?=null
     private var country=""
     private var mode="All"
-    private var bannerAlways=false
-    private var listAlways=true
+    private lateinit var clock:TextView
+    private lateinit var fullscreenButton:TextView
+    private val clockHandler=Handler(Looper.getMainLooper())
+    private val clockUpdater=object:Runnable { override fun run(){if(::clock.isInitialized){clock.text=SimpleDateFormat("h:mm a",Locale.getDefault()).format(Date())};clockHandler.postDelayed(this,30000)} }
     private var currentSourceName="All"
     private val prefs by lazy {getSharedPreferences("tv_settings",MODE_PRIVATE)}
     private val favorites by lazy {prefs.getStringSet("favorites",emptySet()).orEmpty().toMutableSet()}
@@ -50,7 +58,13 @@ class TvActivity:AppCompatActivity() {
         setSingleLine(true);ellipsize=android.text.TextUtils.TruncateAt.END
         setPadding(dp(6),dp(2),dp(6),dp(2))
     }
-    private fun action(s:String,click:()->Unit)=label(s,13f).apply {
+    private fun action(s:String,click:()->Unit)=label(s,14f).apply {
+        gravity=Gravity.CENTER
+        minWidth=dp(48)
+        minHeight=dp(48)
+        setPadding(dp(10),dp(4),dp(10),dp(4))
+        setBackgroundColor(0xff1c3854.toInt())
+        contentDescription=s
         isFocusable=true;backgroundTintList=null
         setOnClickListener{click()}
         setOnFocusChangeListener{_,focused->setBackgroundColor(if(focused)0xff1763dd.toInt() else Color.TRANSPARENT)}
@@ -58,19 +72,26 @@ class TvActivity:AppCompatActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         player=ExoPlayer.Builder(this).build()
         val root=FrameLayout(this).apply{setBackgroundColor(Color.BLACK)}
         video=PlayerView(this).apply {this.player=this@TvActivity.player;useController=false}
         root.addView(video,FrameLayout.LayoutParams(-1,-1))
         top=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;setBackgroundColor(0xc9001429.toInt());gravity=Gravity.CENTER_VERTICAL}
-        title=label("SimpleIPTV TV",17f)
-        top.addView(title,LinearLayout.LayoutParams(0,dp(48),1f))
+        title=label("SimpleIPTV TV",15f)
+        top.addView(title,LinearLayout.LayoutParams(0,dp(56),1f))
+        top.addView(action("◀"){stepChannel(-1)})
+        top.addView(action("▶"){stepChannel(1)})
         top.addView(action("♡"){toggleFavorite()})
-        top.addView(action("≡"){choosePlaylist()})
-        top.addView(action("🌐"){chooseCountry()})
+        top.addView(action("Playlists"){choosePlaylist()})
+        top.addView(action("Countries"){chooseCountry()})
         top.addView(action("⚙"){settings()})
-        top.addView(action("⛶"){showPanels(false)})
-        root.addView(top,FrameLayout.LayoutParams(-1,dp(48),Gravity.TOP))
+        fullscreenButton=action("⛶"){showPanels(sidebar.visibility!=View.VISIBLE)}
+        top.addView(fullscreenButton)
+        clock=label("",13f).apply{gravity=Gravity.CENTER}
+        top.addView(clock,LinearLayout.LayoutParams(dp(88),dp(56)))
+        clockHandler.post(clockUpdater)
+        root.addView(top,FrameLayout.LayoutParams(-1,dp(56),Gravity.TOP))
         sidebar=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(0xe9001429.toInt())}
         search=EditText(this).apply {hint="Search channels";setSingleLine(true);setTextColor(Color.WHITE);setHintTextColor(Color.LTGRAY)}
         sidebar.addView(search,LinearLayout.LayoutParams(-1,dp(44)))
@@ -98,15 +119,13 @@ class TvActivity:AppCompatActivity() {
         entries.setOnItemLongClickListener{_,_,position,_->toggleFavorite(visible[position]);true}
         sidebar.addView(entries,LinearLayout.LayoutParams(-1,0,1f))
         val width=(resources.displayMetrics.widthPixels*0.19).toInt()
-        root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START).apply{topMargin=dp(48)})
+        root.addView(sidebar,FrameLayout.LayoutParams(width,-1,Gravity.START).apply{topMargin=dp(56)})
         setContentView(root)
         search.addTextChangedListener(object:android.text.TextWatcher{
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){refresh()}
             override fun afterTextChanged(s:android.text.Editable?){}
         })
-        bannerAlways=prefs.getBoolean("banner_always",true)
-        listAlways=prefs.getBoolean("list_always",true)
         showPanels(true)
         load(sources.first())
     }
@@ -155,9 +174,23 @@ class TvActivity:AppCompatActivity() {
     private fun play(c:TvChannel){
         current=c
         player.setMediaItem(MediaItem.fromUri(c.url));player.prepare();player.play()
-        title.text="${c.name}   •   ${c.country}"
-        showPanels(listAlways)
+        title.text="${c.name}   •   ${countryName(c.country)}"
         adapter.notifyDataSetChanged()
+    }
+    private fun stepChannel(direction:Int){
+        val list=visible
+        if(list.isEmpty()){Toast.makeText(this,"No channels in selected filter",Toast.LENGTH_SHORT).show();return}
+        val index=list.indexOfFirst{it.url==current?.url}
+        val next=if(index<0){if(direction>0)0 else list.lastIndex}else (index+direction+list.size)%list.size
+        play(list[next])
+    }
+    private fun countryName(code:String):String {
+        if(code.isBlank())return "Unknown country"
+        val normalized=code.trim().uppercase(Locale.ROOT)
+        val iso=when(normalized){"UK"->"GB";"USA"->"US";else->normalized}
+        if(iso.length!=2)return code
+        val name=Locale("",iso).displayCountry
+        return if(name.isBlank()||name.equals(iso,true))code else name
     }
     private fun toggleFavorite(c:TvChannel?=current){
         if(c==null)return
@@ -171,9 +204,11 @@ class TvActivity:AppCompatActivity() {
             AlertDialog.Builder(this).setTitle("Country filter").setMessage("No country information in this playlist. Select All playlist or import M3U with tvg-country or country-coded tvg-id.").setPositiveButton("OK",null).show()
             return
         }
-        val items=listOf("All countries")+codes
-        AlertDialog.Builder(this).setTitle("Country filter").setItems(items.toTypedArray()){_,i->
-            country=if(i==0)"" else items[i];refresh()
+        val items=listOf("All countries")+codes.map{countryName(it)}
+        val ordered=codes.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER){countryName(it)})
+        val labels=listOf("All countries")+ordered.map{countryName(it)}
+        AlertDialog.Builder(this).setTitle("Country filter").setItems(labels.toTypedArray()){_,i->
+            country=if(i==0)"" else ordered[i-1];refresh()
         }.show()
     }
     private fun choosePlaylist(){
@@ -197,31 +232,31 @@ class TvActivity:AppCompatActivity() {
             }.show()
     }
     private fun settings(){
-        val opts=arrayOf(if(listAlways)"Channel list: Always visible ✓" else "Channel list: Hide on play ✓",if(bannerAlways)"Top banner: Always visible ✓" else "Top banner: Fullscreen hide ✓","Choose playlist","Clear country filter")
+        val opts=arrayOf("Choose playlist","Choose country","Clear country filter")
         AlertDialog.Builder(this).setTitle("TV Settings").setItems(opts){_,which->
             when(which){
-                0->{listAlways=!listAlways;prefs.edit().putBoolean("list_always",listAlways).apply();showPanels(listAlways)}
-                1->{bannerAlways=!bannerAlways;prefs.edit().putBoolean("banner_always",bannerAlways).apply();showPanels(sidebar.visibility==View.VISIBLE)}
-                2->choosePlaylist()
-                3->{country="";refresh()}
+                0->choosePlaylist()
+                1->chooseCountry()
+                2->{country="";refresh()}
             }
         }.show()
     }
     private fun showPanels(show:Boolean){
         sidebar.visibility=if(show)View.VISIBLE else View.GONE
-        top.visibility=if(show||bannerAlways)View.VISIBLE else View.GONE
-        if(show) {
+        top.visibility=View.VISIBLE
+        fullscreenButton.text=if(show)"⛶" else "▣"
+        fullscreenButton.contentDescription=if(show)"Hide channel list" else "Show channel list"
+        if(show){
             search.clearFocus()
             if(visible.isNotEmpty())entries.requestFocus()
-        }
+        }else fullscreenButton.requestFocus()
     }
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean{
         if(sidebar.visibility!=View.VISIBLE && (keyCode==KeyEvent.KEYCODE_DPAD_UP || keyCode==KeyEvent.KEYCODE_DPAD_DOWN)) {
             val list=if(visible.isNotEmpty()) visible else channels
             if(list.isNotEmpty()) {
                 val index=list.indexOfFirst { it.url==current?.url }
-                val next=if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN) (index+1).mod(list.size) else (if(index<0) 0 else index-1).mod(list.size)
-                play(list[next]);return true
+                stepChannel(if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN)1 else -1);return true
             }
         }
         if(keyCode==KeyEvent.KEYCODE_MENU){showPanels(sidebar.visibility!=View.VISIBLE);return true}
@@ -230,5 +265,5 @@ class TvActivity:AppCompatActivity() {
         if(keyCode==KeyEvent.KEYCODE_BACK&&sidebar.visibility==View.VISIBLE){showPanels(false);return true}
         return super.onKeyDown(keyCode,event)
     }
-    override fun onDestroy(){player.release();super.onDestroy()}
+    override fun onDestroy(){clockHandler.removeCallbacks(clockUpdater);player.release();super.onDestroy()}
 }
