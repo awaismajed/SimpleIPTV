@@ -32,6 +32,7 @@ class TvActivity:AppCompatActivity() {
     private var country=""
     private var mode="All"
     private var bannerAlways=false
+    private var currentSourceName="All"
     private val prefs by lazy {getSharedPreferences("tv_settings",MODE_PRIVATE)}
     private val favorites by lazy {prefs.getStringSet("favorites",emptySet()).orEmpty().toMutableSet()}
     private val sources by lazy {
@@ -69,6 +70,7 @@ class TvActivity:AppCompatActivity() {
         sidebar=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(0xe9001429.toInt())}
         search=EditText(this).apply {hint="Search channels";setSingleLine(true);setTextColor(Color.WHITE);setHintTextColor(Color.LTGRAY)}
         sidebar.addView(search,LinearLayout.LayoutParams(-1,52))
+        search.isFocusableInTouchMode=true
         val filters=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
         listOf("All","Favorites","Country").forEach {f->filters.addView(action(f){if(f=="Country")chooseCountry() else {mode=f;refresh()}},LinearLayout.LayoutParams(0,46,1f))}
         sidebar.addView(filters)
@@ -101,6 +103,7 @@ class TvActivity:AppCompatActivity() {
         return output
     }
     private fun load(source:TvSource){
+        currentSourceName=source.name
         title.text="Loading ${source.name}..."
         thread {
             val result=runCatching {
@@ -124,6 +127,7 @@ class TvActivity:AppCompatActivity() {
             item.setOnLongClickListener{toggleFavorite(c);true}
             entries.addView(item,LinearLayout.LayoutParams(-1,46))
         }
+        if(sidebar.visibility==View.VISIBLE && entries.childCount>0 && !search.hasFocus())entries.getChildAt(0).requestFocus()
     }
     private fun play(c:TvChannel){
         current=c
@@ -177,9 +181,20 @@ class TvActivity:AppCompatActivity() {
     private fun showPanels(show:Boolean){
         sidebar.visibility=if(show)View.VISIBLE else View.GONE
         top.visibility=if(show||bannerAlways)View.VISIBLE else View.GONE
-        if(show)search.clearFocus()
+        if(show) {
+            search.clearFocus()
+            if(entries.childCount>0)entries.getChildAt(0).requestFocus()
+        }
     }
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean{
+        if(sidebar.visibility!=View.VISIBLE && (keyCode==KeyEvent.KEYCODE_DPAD_UP || keyCode==KeyEvent.KEYCODE_DPAD_DOWN)) {
+            val list=if(visible.isNotEmpty()) visible else channels
+            if(list.isNotEmpty()) {
+                val index=list.indexOfFirst { it.url==current?.url }
+                val next=if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN) (index+1).mod(list.size) else (if(index<0) 0 else index-1).mod(list.size)
+                play(list[next]);return true
+            }
+        }
         if(keyCode==KeyEvent.KEYCODE_MENU){showPanels(sidebar.visibility!=View.VISIBLE);return true}
         if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER&&sidebar.visibility!=View.VISIBLE){showPanels(true);return true}
         if(keyCode==KeyEvent.KEYCODE_DPAD_LEFT&&sidebar.visibility!=View.VISIBLE){showPanels(true);return true}
