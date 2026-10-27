@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p release
           cp app/build/outputs/apk/debug/app-debug.apk release/SimpleIPTV-v4.5.2-beta.apk
-          cp tv/build/outputs/apk/debug/tv-debug.apk release/SimpleIPTV-TV-v1.0-beta.apk
+          cp tv/build/outputs/apk/debug/tv-debug.apk release/SimpleIPTV-TV-V1.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
