@@ -1,0 +1,10 @@
+{
+  "id": "com.spel.simpleiptv.webos",
+  "version": "1.0.0",
+  "vendor": "SPEL",
+  "type": "web",
+  "main": "index.html",
+  "title": "SimpleIPTV webOS",
+  "resolution": "1280x720",
+  "icon": "icon.png"
+}

@@ -72,6 +72,9 @@ class MainActivity : AppCompatActivity() {
     private val exportBackupLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) writeBackup(uri)
     }
+    private val localM3uLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importLocalPlaylist(uri)
+    }
     private val importBackupLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) confirmRestore(uri)
     }
@@ -132,6 +135,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSettings(true) }
         findViewById<Button>(R.id.backFromSettings).setOnClickListener { showSettings(false) }
         findViewById<Button>(R.id.addPlaylistButton).setOnClickListener { showAddPlaylist() }
+        findViewById<Button>(R.id.addLocalPlaylistButton).setOnClickListener {
+            localM3uLauncher.launch(arrayOf("*/*"))
+        }
         findViewById<Button>(R.id.refreshButton).setOnClickListener { syncOnlinePlaylist() }
         findViewById<Button>(R.id.exportBackupButton).setOnClickListener { exportBackupLauncher.launch("SimpleIPTV-backup.zip") }
         findViewById<Button>(R.id.importBackupButton).setOnClickListener { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
@@ -257,6 +263,74 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun importLocalPlaylist(uri: Uri) {
+        val displayName = runCatching {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+        }.getOrNull().orEmpty().ifBlank { "Local playlist.m3u" }
+        if (!displayName.lowercase(java.util.Locale.ROOT).let {
+                it.endsWith(".m3u") || it.endsWith(".m3u8")
+            }) {
+            AlertDialog.Builder(this).setMessage("Choose an .m3u or .m3u8 playlist file.")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        val defaultName = displayName.substringBeforeLast('.')
+        val nameField = EditText(this).apply {
+            setText(defaultName)
+            selectAll()
+            setSingleLine()
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+        }
+        AlertDialog.Builder(this).setTitle("Name imported playlist")
+            .setView(nameField).setNegativeButton("Cancel", null)
+            .setPositiveButton("Import") { _, _ ->
+                val name = nameField.text.toString().trim()
+                if (name.isBlank() || name in listOf("All", "Working", "Favorites") ||
+                    sources.any { it.name.equals(name, true) }) {
+                    android.widget.Toast.makeText(this, "Choose a unique playlist name", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    thread {
+                        val result = runCatching {
+                            val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                                val output = java.io.ByteArrayOutputStream()
+                                val buffer = ByteArray(8192)
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    require(output.size() + count <= 30 * 1024 * 1024) { "File exceeds 30 MB" }
+                                    output.write(buffer, 0, count)
+                                }
+                                output.toByteArray()
+                            } ?: error("Unable to read selected file")
+                            val parsed = M3uParser.parse(String(bytes, Charsets.UTF_8))
+                            require(parsed.isNotEmpty()) { "No valid channel entries found" }
+                            val folder = File(filesDir, "local-playlists").apply { mkdirs() }
+                            val filename = java.util.UUID.randomUUID().toString() + ".m3u"
+                            val destination = File(folder, filename)
+                            destination.writeBytes(bytes)
+                            PlaylistSource(name, destination.toURI().toString()) to parsed.size
+                        }
+                        runOnUiThread {
+                            result.onSuccess { (source, count) ->
+                                saveCustomSources(customSources + source)
+                                browseSelection = source.name
+                                setupBrowseFilter()
+                                loadBrowseSelection()
+                                showSettings(false)
+                                android.widget.Toast.makeText(this, "Imported $count channels from $name", android.widget.Toast.LENGTH_LONG).show()
+                            }.onFailure {
+                                AlertDialog.Builder(this).setTitle("Import failed")
+                                    .setMessage(it.message ?: "Cannot read playlist")
+                                    .setPositiveButton("OK", null).show()
+                            }
+                        }
+                    }
+                }
+            }.show()
+    }
+
     private fun showAddPlaylist() {
         val fields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -362,11 +436,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun chooseCountry() {
-        val codes = java.util.Locale.getISOCountries().toList().sortedBy {
-            java.util.Locale("", it).displayCountry
+        if (masterChannels.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("Country filter unavailable")
+                .setMessage("The IPTV-org master playlist has not loaded yet. Open Settings and sync the master playlist, then try again.")
+                .setPositiveButton("OK", null).show()
+            return
         }
-        val names = listOf("All countries") + codes.map { java.util.Locale("", it).displayCountry }
-        AlertDialog.Builder(this).setTitle("Select country")
+        val codes = CountryCatalog.codes(masterChannels)
+        val names = listOf("All countries") + codes.map { CountryCatalog.name(it) }
+        AlertDialog.Builder(this).setTitle("Country • ${codes.size} available")
             .setItems(names.toTypedArray()) { _, index ->
                 selectedCountry = if (index == 0) "" else codes[index - 1]
                 findViewById<Button>(R.id.countryFilterButton).text = names[index] + " ▾"
@@ -374,13 +452,9 @@ class MainActivity : AppCompatActivity() {
                 preferences.edit().putString("browse", "All").apply()
                 setupBrowseFilter()
                 channelSelection = "All"
-                if (masterChannels.isNotEmpty()) {
-                    allChannels = masterChannels
-                    currentPlaylist = "All"
-                    applySearch()
-                } else {
-                    loadPlaylist("All", masterUrl)
-                }
+                allChannels = masterChannels
+                currentPlaylist = "All"
+                applySearch()
             }.show()
     }
 
@@ -620,13 +694,19 @@ class MainActivity : AppCompatActivity() {
 
         thread {
             val channels = try {
-                val connection = URL(playlistUrl).openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 20000
-                connection.setRequestProperty("User-Agent", "SimpleIPTV/2.3")
-                try {
-                    connection.inputStream.bufferedReader().use { M3uParser.parse(it.readText()) }
-                } finally { connection.disconnect() }
+                val connection = if (playlistUrl.startsWith("file:")) null
+                    else URL(playlistUrl).openConnection() as HttpURLConnection
+                if (connection == null) {
+                    val file = File(java.net.URI(playlistUrl))
+                    M3uParser.parse(file.readText())
+                } else {
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 20000
+                    connection.setRequestProperty("User-Agent", "SimpleIPTV/2.3")
+                    try {
+                        connection.inputStream.bufferedReader().use { M3uParser.parse(it.readText()) }
+                    } finally { connection.disconnect() }
+                }
             } catch (_: Exception) { emptyList() }
 
             runOnUiThread {
@@ -682,8 +762,7 @@ class MainActivity : AppCompatActivity() {
                 "Favorites" -> isFavorite(channel)
                 else -> true
             }
-            matches && modeMatches && (selectedCountry.isBlank() ||
-                channel.country.split(';', ',').any { it.trim().equals(selectedCountry, true) })
+            matches && modeMatches && CountryCatalog.matches(channel, selectedCountry)
 
         }
         showChannels(filtered)

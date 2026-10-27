@@ -1,0 +1,3 @@
+# SimpleIPTV webOS Edition (initial implementation)
+
+Separate webOS HTML/JavaScript application alongside the Android TV module. Requires webOS TV SDK CLI and an icon.png asset before packaging: `ares-package webos`. The IPK must be tested on an actual supported webOS TV. WebOS devices may require developer mode for sideloading. Stream playback depends on webOS codec and CORS/HTTP restrictions. This initial version is not a certified webOS store release.
